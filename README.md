@@ -28,6 +28,7 @@ Standard first; deviate only where OpenAI has no equivalent, and then only
 | Endpoint | Status |
 |---|---|
 | `POST /v1/audio/transcriptions` (+`/translations`) — multipart; `response_format` json/verbose_json/text/srt/vtt; `stream=true` → SSE | ✅ |
+| ↑ same endpoint, a `diarize` model — speaker-labeled segments + stateless `speakers` (UUID + voiceprint + similarity) | ✅ |
 | `POST /v1/audio/speech` — TTS | ◻ 501 |
 | `GET /v1/realtime` — live STT over WebSocket | ◻ 501 |
 | `GET /v1/models`, `GET /health` | ✅ |
@@ -74,7 +75,7 @@ models:
 ## Speakers (design)
 
 oidio is **stateless about identity** — it never stores names or a speaker
-catalog. Diarization (when it lands) returns, per request:
+catalog. A `diarize` model returns, per request:
 
 - A **stable speaker UUID** on each `verbose_json` segment (`speaker`).
 - A top-level **`speakers`** array — each `{uuid, embedding, similarity}`, where

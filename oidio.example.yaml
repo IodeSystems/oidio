@@ -16,7 +16,21 @@ models:
     num_threads: 4
     language: en
 
+  # Diarized STT — same transducer + a pyannote segmentation model and a speaker
+  # embedding model. Returns speaker-labeled segments + a stateless `speakers`
+  # array (UUID + voiceprint + similarity). Request args: speaker_confidence,
+  # known_speakers (JSON [{uuid,embedding}]).
+  stt-diarize:
+    type: diarize
+    encoder: models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/encoder-epoch-30-avg-1.int8.onnx
+    decoder: models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/decoder-epoch-30-avg-1.int8.onnx
+    joiner:  models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/joiner-epoch-30-avg-1.int8.onnx
+    tokens:  models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/tokens.txt
+    segmentation: models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
+    embedding:    models/wespeaker_en_voxceleb_CAMpp.onnx
+    cluster_threshold: 0.7   # lower → more speakers; or set num_clusters for a known count
+    num_threads: 4
+
   # Recognized but not yet implemented (handlers return 501). See docs/PLAN.md.
-  # stt-diarize: { type: diarize, ... }
   # tts:         { type: tts, ... }
   # realtime-stt:{ type: realtime, ... }

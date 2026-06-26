@@ -23,7 +23,7 @@ func (s *Server) handleTranscriptions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, fmt.Sprintf("model %q not found", name), "invalid_request_error")
 		return
 	}
-	if m.stt == nil {
+	if m.stt == nil && m.diar == nil {
 		writeErr(w, http.StatusNotImplemented,
 			fmt.Sprintf("model %q (type %s) has no batch transcription", name, m.typ), "invalid_request_error")
 		return
@@ -40,6 +40,14 @@ func (s *Server) handleTranscriptions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
 		return
 	}
+
+	format := r.FormValue("response_format")
+	if m.diar != nil {
+		// Diarization needs the whole clip; streaming doesn't apply.
+		s.handleDiarize(w, r, m, samples, format)
+		return
+	}
+
 	res := m.stt.Transcribe(samples, audio.SampleRate)
 	duration := float64(len(samples)) / float64(audio.SampleRate)
 

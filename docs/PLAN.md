@@ -12,14 +12,20 @@ only where OpenAI has no equivalent, and only additively.
   against the gigaspeech int8 zipformer.
   - **next**: pseudo-segments from token timestamps (currently one whole-clip
     segment); whisper/sense-voice model types; honest `translate` task wiring.
-- ◻ **S2 — Diarization** (`type: diarize`). Offline `OfflineSpeakerDiarization`
-  (pyannote segmentation + speaker embedding + clustering) + the transducer,
-  aligned by timestamp → speaker-labeled `verbose_json` segments. **Stateless
-  identity model, see below.**
-  - **next**: wire request args (`diarize`, `speaker_confidence`,
-    `known_speakers`); build the `speakers` similarity object; mint UUIDs.
-  - **risk**: auto speaker-count is threshold-sensitive; expose the threshold and
-    accept a known count.
+- ✅ **S2 — Diarization** (`type: diarize`). Done + validated. Offline
+  `OfflineSpeakerDiarization` (pyannote segmentation + speaker embedding +
+  clustering) + the transducer ASR, aligned by token timestamp → speaker-labeled
+  segments. **Stateless identity:** each speaker is a UUID (matched to a
+  caller-supplied `known_speakers` above `speaker_confidence`, else minted); the
+  response carries each speaker's 512-d voiceprint `embedding` and a `similarity`
+  object (cosine to the others). No server-side catalog; names live at the caller.
+  Request args (additive multipart fields): `speaker_confidence`, `known_speakers`
+  (JSON `[{uuid,embedding}]`). Validated on the real 2-speaker EN clips — correct
+  count, and a passed-back voiceprint reuses its UUID.
+  - **next**: per-request `num_speakers`/clustering override (currently model
+    config); pseudo-segments for the plain STT path.
+  - **risk**: auto speaker-count is threshold-sensitive (`cluster_threshold`
+    default 0.7); pass a known count when possible.
 - ◻ **S3 — TTS** (`type: tts`). `POST /v1/audio/speech` via `OfflineTts`
   (+`OfflineTtsKokoroModelConfig`) → audio bytes. Honor `response_format`,
   `voice`, `speed`.

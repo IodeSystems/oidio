@@ -23,11 +23,22 @@ type Config struct {
 type ModelSpec struct {
 	Type string `yaml:"type"` // transducer | diarize | tts | realtime
 
-	// Offline transducer (type: transducer).
+	// Offline transducer (type: transducer, and the ASR half of type: diarize).
 	Encoder string `yaml:"encoder"`
 	Decoder string `yaml:"decoder"`
 	Joiner  string `yaml:"joiner"`
 	Tokens  string `yaml:"tokens"`
+
+	// Diarization (type: diarize) — pyannote segmentation + a speaker-embedding
+	// model. ClusterThreshold tunes the speaker count (lower → more speakers);
+	// NumClusters>0 forces a known count. Identity is stateless: the request's
+	// speaker_confidence controls known-speaker matching, not these.
+	Segmentation     string  `yaml:"segmentation"`
+	Embedding        string  `yaml:"embedding"`
+	ClusterThreshold float32 `yaml:"cluster_threshold"` // default 0.7
+	NumClusters      int     `yaml:"num_clusters"`      // 0 = auto (use threshold)
+	MinDurationOn    float32 `yaml:"min_duration_on"`
+	MinDurationOff   float32 `yaml:"min_duration_off"`
 
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")

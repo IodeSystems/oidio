@@ -17,7 +17,8 @@ func SherpaVersion() string { return sherpa.GetVersion() }
 type model struct {
 	name string
 	typ  string
-	stt  *engine.STT // non-nil for type: transducer
+	stt  *engine.STT      // non-nil for type: transducer
+	diar *engine.Diarizer // non-nil for type: diarize
 }
 
 type Server struct {
@@ -38,7 +39,13 @@ func New(cfg *config.Config) (*Server, error) {
 				return nil, fmt.Errorf("model %q: %w", name, err)
 			}
 			m.stt = stt
-		case "diarize", "tts", "realtime":
+		case "diarize":
+			diar, err := engine.NewDiarizer(spec)
+			if err != nil {
+				return nil, fmt.Errorf("model %q: %w", name, err)
+			}
+			m.diar = diar
+		case "tts", "realtime":
 			// recognized; handlers report not-implemented until built out.
 		default:
 			return nil, fmt.Errorf("model %q: unknown type %q", name, spec.Type)
