@@ -31,6 +31,33 @@ models:
     cluster_threshold: 0.7   # lower → more speakers; or set num_clusters for a known count
     num_threads: 4
 
-  # Recognized but not yet implemented (handlers return 501). See docs/PLAN.md.
-  # tts:         { type: tts, ... }
-  # realtime-stt:{ type: realtime, ... }
+  # TTS — a sherpa-onnx Kokoro model. Standard OpenAI POST /v1/audio/speech
+  # (mp3/opus/aac/flac/wav/pcm). `voices` maps an OpenAI voice name → the speaker
+  # id in voices.bin (Kokoro v1.0 names are alphabetical; full list in the release).
+  tts:
+    type: tts
+    kokoro_model:    models/kokoro-int8-multi-lang-v1_0/model.int8.onnx
+    kokoro_voices:   models/kokoro-int8-multi-lang-v1_0/voices.bin
+    kokoro_tokens:   models/kokoro-int8-multi-lang-v1_0/tokens.txt
+    kokoro_data_dir: models/kokoro-int8-multi-lang-v1_0/espeak-ng-data
+    kokoro_lexicon:  models/kokoro-int8-multi-lang-v1_0/lexicon-us-en.txt
+    default_voice: af_heart
+    num_threads: 4
+    voices:
+      # a `voice` value that's a bare integer is used as a speaker id directly.
+      af_heart: 3
+      af_bella: 2
+      af_nova: 7
+      am_adam: 11
+      am_echo: 12
+      am_michael: 16
+      am_onyx: 17
+      # OpenAI standard voice names → nearest Kokoro voice (so vanilla clients work)
+      alloy: 0
+      echo: 12
+      fable: 1
+      onyx: 17
+      nova: 7
+      shimmer: 10
+
+  # realtime-stt:{ type: realtime, ... }   # not yet implemented (501)

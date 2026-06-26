@@ -2,12 +2,6 @@ package server
 
 import "net/http"
 
-// handleSpeech — POST /v1/audio/speech (TTS). Engine exists in sherpa-onnx-go
-// (OfflineTts + Kokoro); handler lands in a follow-up slice.
-func (s *Server) handleSpeech(w http.ResponseWriter, _ *http.Request) {
-	writeErr(w, http.StatusNotImplemented, "TTS (/v1/audio/speech) not yet implemented", "not_implemented")
-}
-
 // handleRealtime — GET /v1/realtime (live STT over WebSocket, OpenAI Realtime
 // transcription schema). Follow-up slice.
 func (s *Server) handleRealtime(w http.ResponseWriter, _ *http.Request) {

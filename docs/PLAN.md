@@ -26,9 +26,12 @@ only where OpenAI has no equivalent, and only additively.
     config); pseudo-segments for the plain STT path.
   - **risk**: auto speaker-count is threshold-sensitive (`cluster_threshold`
     default 0.7); pass a known count when possible.
-- ◻ **S3 — TTS** (`type: tts`). `POST /v1/audio/speech` via `OfflineTts`
-  (+`OfflineTtsKokoroModelConfig`) → audio bytes. Honor `response_format`,
-  `voice`, `speed`.
+- ✅ **S3 — TTS** (`type: tts`). Done + validated. `POST /v1/audio/speech` via
+  Kokoro (`OfflineTts`) → audio bytes. `response_format` mp3/opus/aac/flac (ffmpeg)
+  + wav/pcm (native); `voice` resolves through a config name→sid map (or a bare
+  integer sid), `speed` honored. Validated: valid mp3 + wav out, distinct voices.
+  - **next**: stream chunks (`GenerateWithCallback`) for lower latency; expose the
+    full Kokoro voice catalog.
 - ◻ **S4 — Realtime STT** (`type: realtime`). `GET /v1/realtime` WebSocket, OpenAI
   Realtime transcription schema, over `OnlineRecognizer` + VAD endpointing. Live
   `…delta`/`…completed` events.

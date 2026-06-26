@@ -19,6 +19,7 @@ type model struct {
 	typ  string
 	stt  *engine.STT      // non-nil for type: transducer
 	diar *engine.Diarizer // non-nil for type: diarize
+	tts  *engine.TTS      // non-nil for type: tts
 }
 
 type Server struct {
@@ -45,8 +46,14 @@ func New(cfg *config.Config) (*Server, error) {
 				return nil, fmt.Errorf("model %q: %w", name, err)
 			}
 			m.diar = diar
-		case "tts", "realtime":
-			// recognized; handlers report not-implemented until built out.
+		case "tts":
+			tts, err := engine.NewTTS(spec)
+			if err != nil {
+				return nil, fmt.Errorf("model %q: %w", name, err)
+			}
+			m.tts = tts
+		case "realtime":
+			// recognized; handler reports not-implemented until built out.
 		default:
 			return nil, fmt.Errorf("model %q: unknown type %q", name, spec.Type)
 		}

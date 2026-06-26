@@ -40,6 +40,19 @@ type ModelSpec struct {
 	MinDurationOn    float32 `yaml:"min_duration_on"`
 	MinDurationOff   float32 `yaml:"min_duration_off"`
 
+	// TTS (type: tts) — a sherpa-onnx Kokoro model. Voices in voices.bin are
+	// indexed by speaker id; `voices` maps an OpenAI `voice` name → that id, and
+	// `default_voice` (a name or a bare integer) is used when the request omits or
+	// doesn't match one.
+	KokoroModel   string         `yaml:"kokoro_model"`
+	KokoroVoices  string         `yaml:"kokoro_voices"`
+	KokoroTokens  string         `yaml:"kokoro_tokens"`
+	KokoroDataDir string         `yaml:"kokoro_data_dir"` // espeak-ng-data
+	KokoroLexicon string         `yaml:"kokoro_lexicon"`  // comma-separated lexicon files
+	KokoroLang    string         `yaml:"kokoro_lang"`     // optional (e.g. "en-us")
+	Voices        map[string]int `yaml:"voices"`
+	DefaultVoice  string         `yaml:"default_voice"`
+
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")
 }
