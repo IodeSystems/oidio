@@ -1,0 +1,13 @@
+# build output
+/oidio
+/bin/
+
+# local config (commit oidio.example.yaml instead)
+/oidio.yaml
+
+# models + audio are large / not source
+models/
+*.onnx
+*.tar.bz2
+*.wav
+*.mp3
