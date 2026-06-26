@@ -2,12 +2,6 @@ package server
 
 import "net/http"
 
-// handleRealtime — GET /v1/realtime (live STT over WebSocket, OpenAI Realtime
-// transcription schema). Follow-up slice.
-func (s *Server) handleRealtime(w http.ResponseWriter, _ *http.Request) {
-	writeErr(w, http.StatusNotImplemented, "realtime WS (/v1/realtime) not yet implemented", "not_implemented")
-}
-
 // handleModels — GET /v1/models (OpenAI catalog shape).
 func (s *Server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	data := make([]map[string]any, 0, len(s.models))

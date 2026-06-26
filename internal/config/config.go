@@ -53,6 +53,12 @@ type ModelSpec struct {
 	Voices        map[string]int `yaml:"voices"`
 	DefaultVoice  string         `yaml:"default_voice"`
 
+	// Realtime (type: realtime) — a STREAMING transducer (reuses encoder/decoder/
+	// joiner/tokens above, pointed at a streaming model). InputSampleRate is the
+	// PCM rate the client sends (OpenAI Realtime uses 24000; sherpa resamples).
+	InputSampleRate int     `yaml:"input_sample_rate"` // default 24000
+	Rule2Silence    float32 `yaml:"rule2_silence"`     // end-of-utterance trailing silence, sec (default 0.8)
+
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")
 }

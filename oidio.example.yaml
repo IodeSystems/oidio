@@ -60,4 +60,14 @@ models:
       nova: 7
       shimmer: 10
 
-  # realtime-stt:{ type: realtime, ... }   # not yet implemented (501)
+  # Realtime STT over WebSocket — a STREAMING transducer (different model than the
+  # offline one above). Client streams base64 PCM16 at input_sample_rate.
+  realtime-stt:
+    type: realtime
+    encoder: models/sherpa-onnx-streaming-zipformer-en-2023-06-26/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx
+    decoder: models/sherpa-onnx-streaming-zipformer-en-2023-06-26/decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx
+    joiner:  models/sherpa-onnx-streaming-zipformer-en-2023-06-26/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx
+    tokens:  models/sherpa-onnx-streaming-zipformer-en-2023-06-26/tokens.txt
+    input_sample_rate: 24000   # OpenAI Realtime clients send 24 kHz; sherpa resamples
+    rule2_silence: 0.8         # end-of-utterance trailing silence (lower = snappier finals)
+    num_threads: 4

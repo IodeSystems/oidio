@@ -32,9 +32,15 @@ only where OpenAI has no equivalent, and only additively.
   integer sid), `speed` honored. Validated: valid mp3 + wav out, distinct voices.
   - **next**: stream chunks (`GenerateWithCallback`) for lower latency; expose the
     full Kokoro voice catalog.
-- ◻ **S4 — Realtime STT** (`type: realtime`). `GET /v1/realtime` WebSocket, OpenAI
-  Realtime transcription schema, over `OnlineRecognizer` + VAD endpointing. Live
-  `…delta`/`…completed` events.
+- ✅ **S4 — Realtime STT** (`type: realtime`). Done + validated. `GET /v1/realtime`
+  WebSocket in the OpenAI Realtime transcription schema, over a streaming
+  `OnlineRecognizer` with built-in silence endpointing. Client streams base64
+  PCM16 (`input_audio_buffer.append`, resampled from `input_sample_rate`); server
+  emits `conversation.item.input_audio_transcription.delta` (incremental) and
+  `.completed` (per endpoint / on `.commit`). Validated: session.created → live
+  deltas → correct final transcript.
+  - **next**: tune multi-utterance segmentation (`rule2_silence`); optional
+    per-session model select from `session.update`.
 - ◻ **S5 — WebRTC** transport for realtime (pion). Optional; lower-latency live
   mic with built-in jitter/echo handling. Heavier (ICE/DTLS/SDP).
 - ◻ **S6 — `/v1/capabilities`** discovery manifest (mirror corrallm's), advertising
