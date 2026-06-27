@@ -62,10 +62,16 @@ type RTSession struct {
 }
 
 func (e *Realtime) NewSession() *RTSession {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	return &RTSession{e: e, stream: sherpa.NewOnlineStream(e.rec)}
 }
 
-func (s *RTSession) Close() { sherpa.DeleteOnlineStream(s.stream) }
+func (s *RTSession) Close() {
+	s.e.mu.Lock()
+	defer s.e.mu.Unlock()
+	sherpa.DeleteOnlineStream(s.stream)
+}
 
 // Accept feeds a chunk of audio (at the configured input rate) and returns any
 // deltas / endpoint completions it produced.

@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/iodesystems/oidio/internal/config"
 	sherpa "github.com/k2-fsa/sherpa-onnx-go/sherpa_onnx"
@@ -18,6 +19,7 @@ const sampleRate = 16000
 // UUIDs, similarity, and known-speaker matching live a layer up (stateless, no
 // persistent catalog).
 type Diarizer struct {
+	mu   sync.Mutex // serializes the shared sd/asr/emb objects (cgo, unverified MT-safety)
 	asr  *sherpa.OfflineRecognizer
 	sd   *sherpa.OfflineSpeakerDiarization
 	emb  *sherpa.SpeakerEmbeddingExtractor
@@ -103,6 +105,8 @@ func (d *Diarizer) Language() string { return d.lang }
 
 // Process diarizes + transcribes the whole clip (16 kHz mono).
 func (d *Diarizer) Process(samples []float32) DiarResult {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	// 1. diarization → speaker time spans
 	diar := d.sd.Process(samples)
 	type span struct {

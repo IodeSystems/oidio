@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/iodesystems/oidio/internal/config"
 	sherpa "github.com/k2-fsa/sherpa-onnx-go/sherpa_onnx"
 )
 
-// TTS wraps a sherpa-onnx Kokoro model. Synthesis is serialized — the underlying
-// engine is not safe for concurrent Generate calls.
+// TTS wraps a sherpa-onnx Kokoro model. A mutex serializes Generate — the shared
+// engine's cgo thread-safety is unverified, and synthesis is CPU-bound, so
+// serializing costs nothing on a busy box while guaranteeing correctness.
 type TTS struct {
+	mu          sync.Mutex
 	tts         *sherpa.OfflineTts
 	rate        int
 	voices      map[string]int
@@ -92,6 +95,8 @@ func (t *TTS) Synthesize(text string, sid int, speed float32) []float32 {
 	if speed <= 0 {
 		speed = 1
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	a := t.tts.Generate(text, sid, speed)
 	if a == nil {
 		return nil

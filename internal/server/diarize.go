@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/iodesystems/oidio/internal/engine"
 )
 
 // knownSpeaker is a voiceprint the caller already holds (from a prior response),
@@ -44,34 +45,7 @@ func (s *Server) handleDiarize(w http.ResponseWriter, r *http.Request, m *model,
 	}
 
 	res := m.diar.Process(samples)
-
-	// local cluster id → UUID: reuse the best known speaker above threshold, else new.
-	uuidOf := make(map[int]string, len(res.Speakers))
-	embOf := make(map[int][]float32, len(res.Speakers))
-	for _, v := range res.Speakers {
-		id, best := "", conf
-		for _, k := range known {
-			if c := cosine(v.Embedding, k.Embedding); c >= best {
-				best, id = c, k.UUID
-			}
-		}
-		if id == "" {
-			id = uuid.NewString()
-		}
-		uuidOf[v.Local] = id
-		embOf[v.Local] = v.Embedding
-	}
-
-	speakers := make([]speakerOut, 0, len(res.Speakers))
-	for _, v := range res.Speakers {
-		sim := map[string]float64{}
-		for _, o := range res.Speakers {
-			if o.Local != v.Local {
-				sim[uuidOf[o.Local]] = round(float64(cosine(v.Embedding, o.Embedding)), 4)
-			}
-		}
-		speakers = append(speakers, speakerOut{UUID: uuidOf[v.Local], Embedding: v.Embedding, Similarity: sim})
-	}
+	uuidOf, speakers := resolveSpeakers(res.Speakers, known, conf, uuid.NewString)
 
 	segs := make([]segment, 0, len(res.Segments))
 	for i, sg := range res.Segments {
@@ -95,6 +69,38 @@ func (s *Server) handleDiarize(w http.ResponseWriter, r *http.Request, m *model,
 		"segments": segs,
 		"speakers": speakers,
 	})
+}
+
+// resolveSpeakers is the stateless-identity core: map each detected speaker's
+// local cluster id to a UUID — reusing a caller-supplied known speaker's UUID
+// when cosine similarity ≥ conf, else minting one via newID — and build the
+// speakers[] array with each speaker's cosine similarity to the others. Pure and
+// deterministic given newID, so it's unit-tested without any models.
+func resolveSpeakers(detected []engine.SpeakerVoice, known []knownSpeaker, conf float32, newID func() string) (map[int]string, []speakerOut) {
+	uuidOf := make(map[int]string, len(detected))
+	for _, v := range detected {
+		id, best := "", conf
+		for _, k := range known {
+			if c := cosine(v.Embedding, k.Embedding); c >= best {
+				best, id = c, k.UUID
+			}
+		}
+		if id == "" {
+			id = newID()
+		}
+		uuidOf[v.Local] = id
+	}
+	speakers := make([]speakerOut, 0, len(detected))
+	for _, v := range detected {
+		sim := map[string]float64{}
+		for _, o := range detected {
+			if o.Local != v.Local {
+				sim[uuidOf[o.Local]] = round(float64(cosine(v.Embedding, o.Embedding)), 4)
+			}
+		}
+		speakers = append(speakers, speakerOut{UUID: uuidOf[v.Local], Embedding: v.Embedding, Similarity: sim})
+	}
+	return uuidOf, speakers
 }
 
 func cosine(a, b []float32) float32 {

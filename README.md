@@ -96,7 +96,22 @@ oidio is a plain OpenAI backend; [corrallm](https://github.com/IodeSystems/Corra
 proxies it like any other model (spawn `cmd`, `proxy` to its port), with no
 audio-specific code. It replaces corrallm's Python audio adapters.
 
+## Develop
+
+```sh
+go test -race ./...     # unit tests (audio codecs, speaker resolution, config, capabilities)
+```
+The engine **concurrency** tests need real sherpa models; point `OIDIO_TEST_MODELS`
+at a models dir to run them (otherwise they skip):
+```sh
+OIDIO_TEST_MODELS=/path/to/models go test -race ./internal/engine/
+```
+Each engine serializes its shared sherpa objects with a mutex — the cgo
+thread-safety is unverified, and CPU-bound inference loses nothing to serialization
+(concurrency is bounded upstream anyway). CI (`.github/workflows/ci.yml`) builds,
+vets, and runs the race tests on every push.
+
 ## Stack
 
 Go 1.26, cgo + the prebuilt sherpa-onnx native lib (via `sherpa-onnx-go`), stdlib
-HTTP. `ffmpeg` for decode.
+HTTP, pion (WebRTC/Opus). `ffmpeg` for decode/encode.

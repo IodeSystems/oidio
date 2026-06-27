@@ -4,14 +4,18 @@ package engine
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/iodesystems/oidio/internal/config"
 	sherpa "github.com/k2-fsa/sherpa-onnx-go/sherpa_onnx"
 )
 
-// STT is an offline transducer recognizer. Safe for concurrent use: each call
-// gets its own stream; the recognizer itself is stateless across decodes.
+// STT is an offline transducer recognizer. The sherpa recognizer is shared, and
+// its cgo thread-safety is unverified, so a mutex serializes decodes — cheap for
+// CPU-bound inference, and concurrency is already bounded upstream (corrallm
+// slots). Throughput is unaffected on a saturated box; correctness is guaranteed.
 type STT struct {
+	mu   sync.Mutex
 	rec  *sherpa.OfflineRecognizer
 	lang string
 }
@@ -56,6 +60,8 @@ func (s *STT) Language() string { return s.lang }
 
 // Transcribe decodes the whole waveform and returns the result.
 func (s *STT) Transcribe(samples []float32, sampleRate int) Result {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st := sherpa.NewOfflineStream(s.rec)
 	defer sherpa.DeleteOfflineStream(st)
 	st.AcceptWaveform(sampleRate, samples)
