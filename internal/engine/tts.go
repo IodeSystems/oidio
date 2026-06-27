@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/iodesystems/oidio/internal/config"
@@ -74,6 +75,17 @@ func (t *TTS) resolve(name string) int {
 
 func (t *TTS) SampleRate() int  { return t.rate }
 func (t *TTS) NumSpeakers() int { return t.numSpeakers }
+
+// VoiceNames lists the configured voice aliases (sorted), for the capabilities
+// manifest. Callers may also pass a bare integer speaker id (0..NumSpeakers-1).
+func (t *TTS) VoiceNames() []string {
+	names := make([]string, 0, len(t.voices))
+	for n := range t.voices {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // Synthesize renders text to normalized float32 samples at SampleRate().
 func (t *TTS) Synthesize(text string, sid int, speed float32) []float32 {

@@ -76,6 +76,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/realtime", s.handleRealtime)        // WebSocket transport
 	s.mux.HandleFunc("POST /v1/realtime", s.handleRealtimeWebRTC) // WebRTC transport (SDP offer)
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
+	s.mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 }

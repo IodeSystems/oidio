@@ -49,8 +49,11 @@ only where OpenAI has no equivalent, and only additively.
   finalizes). Validated with a pion client streaming ogg-opus: ICE connected →
   30 deltas → 2 accurate final transcripts.
   - **next**: TURN config for non-LAN peers; bundle a browser WebRTC example.
-- ◻ **S6 — `/v1/capabilities`** discovery manifest (mirror corrallm's), advertising
-  per-model surfaces.
+- ✅ **S6 — `/v1/capabilities`** discovery manifest. Done. Public JSON listing each
+  model (id, type, capability) with per-type metadata — realtime: transports
+  [websocket, webrtc]; diarize: diarization flag; tts: voices + formats — plus the
+  endpoints, models_by_capability, and example requests (curl/ws/webrtc). Mirrors
+  corrallm's manifest so a client/LLM discovers oidio's surfaces.
 
 ## Speaker / diarization design (decided)
 
