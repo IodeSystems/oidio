@@ -41,8 +41,14 @@ only where OpenAI has no equivalent, and only additively.
   deltas → correct final transcript.
   - **next**: tune multi-utterance segmentation (`rule2_silence`); optional
     per-session model select from `session.update`.
-- ◻ **S5 — WebRTC** transport for realtime (pion). Optional; lower-latency live
-  mic with built-in jitter/echo handling. Heavier (ICE/DTLS/SDP).
+- ✅ **S5 — WebRTC** transport for realtime (pion). Done + validated. `POST
+  /v1/realtime` with an `application/sdp` offer → SDP answer (non-trickle, gathered
+  ICE). The client's Opus mic track is decoded (pion/opus → 48 kHz mono) into the
+  same streaming recognizer as the WS path; transcript events ride the `oai-events`
+  data channel (`session.created/updated`, `…delta`, `…completed`; `commit`
+  finalizes). Validated with a pion client streaming ogg-opus: ICE connected →
+  30 deltas → 2 accurate final transcripts.
+  - **next**: TURN config for non-LAN peers; bundle a browser WebRTC example.
 - ◻ **S6 — `/v1/capabilities`** discovery manifest (mirror corrallm's), advertising
   per-model surfaces.
 

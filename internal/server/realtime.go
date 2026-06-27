@@ -66,14 +66,24 @@ func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func emit(send func(any) error, events []engine.RTEvent) {
+// rtPayloads turns engine events into the OpenAI Realtime wire objects, shared by
+// the WebSocket and WebRTC transports.
+func rtPayloads(events []engine.RTEvent) []map[string]any {
+	out := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		if e.Delta != "" {
-			_ = send(map[string]any{"type": "conversation.item.input_audio_transcription.delta", "delta": e.Delta})
+			out = append(out, map[string]any{"type": "conversation.item.input_audio_transcription.delta", "delta": e.Delta})
 		}
 		if e.Completed != "" {
-			_ = send(map[string]any{"type": "conversation.item.input_audio_transcription.completed", "transcript": e.Completed})
+			out = append(out, map[string]any{"type": "conversation.item.input_audio_transcription.completed", "transcript": e.Completed})
 		}
+	}
+	return out
+}
+
+func emit(send func(any) error, events []engine.RTEvent) {
+	for _, p := range rtPayloads(events) {
+		_ = send(p)
 	}
 }
 

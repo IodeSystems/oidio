@@ -70,9 +70,15 @@ func (s *RTSession) Close() { sherpa.DeleteOnlineStream(s.stream) }
 // Accept feeds a chunk of audio (at the configured input rate) and returns any
 // deltas / endpoint completions it produced.
 func (s *RTSession) Accept(samples []float32) []RTEvent {
+	return s.AcceptRate(samples, s.e.inRate)
+}
+
+// AcceptRate is Accept with an explicit sample rate — used by the WebRTC path,
+// where Opus decodes at 48 kHz regardless of the configured input rate.
+func (s *RTSession) AcceptRate(samples []float32, rate int) []RTEvent {
 	s.e.mu.Lock()
 	defer s.e.mu.Unlock()
-	s.stream.AcceptWaveform(s.e.inRate, samples)
+	s.stream.AcceptWaveform(rate, samples)
 	return s.drain(false)
 }
 

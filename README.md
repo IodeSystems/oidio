@@ -8,9 +8,9 @@ surface that otherwise takes a pile of separate Python services — STT (batch a
 as slices land, realtime), diarization, and TTS — by calling sherpa-onnx through
 its Go bindings directly. No `uv`, no venvs, no sidecar per model.
 
-Status: **all four engines shipped and validated** — batch STT, diarization, TTS,
-and realtime (WebSocket). Next up is WebRTC transport and a `/v1/capabilities`
-manifest — see [`docs/PLAN.md`](docs/PLAN.md).
+Status: **all engines shipped and validated** — batch STT, diarization, TTS, and
+realtime over both WebSocket and WebRTC. Next up is a `/v1/capabilities` manifest —
+see [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Why
 
@@ -31,6 +31,7 @@ Standard first; deviate only where OpenAI has no equivalent, and then only
 | ↑ same endpoint, a `diarize` model — speaker-labeled segments + stateless `speakers` (UUID + voiceprint + similarity) | ✅ |
 | `POST /v1/audio/speech` — TTS (Kokoro); mp3/opus/aac/flac/wav/pcm | ✅ |
 | `GET /v1/realtime` — live STT over WebSocket (OpenAI Realtime transcription schema) | ✅ |
+| `POST /v1/realtime` — live STT over WebRTC (`application/sdp` offer → answer; Opus track + `oai-events` data channel) | ✅ |
 | `GET /v1/models`, `GET /health` | ✅ |
 
 `stream=true` emits OpenAI's streaming-transcription SSE — `transcript.text.delta`

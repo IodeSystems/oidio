@@ -73,7 +73,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/audio/transcriptions", s.handleTranscriptions)
 	s.mux.HandleFunc("POST /v1/audio/translations", s.handleTranscriptions)
 	s.mux.HandleFunc("POST /v1/audio/speech", s.handleSpeech)
-	s.mux.HandleFunc("GET /v1/realtime", s.handleRealtime)
+	s.mux.HandleFunc("GET /v1/realtime", s.handleRealtime)        // WebSocket transport
+	s.mux.HandleFunc("POST /v1/realtime", s.handleRealtimeWebRTC) // WebRTC transport (SDP offer)
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
