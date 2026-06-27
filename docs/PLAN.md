@@ -94,3 +94,21 @@ similarity computed directly (no `SpeakerEmbeddingManager` persistent store);
 - One process, many models, dispatch on the `model` field.
 - CPU-only, int8 models. cgo + bundled sherpa lib; keep it a standalone binary
   (fault isolation; corrallm stays CGO-free and just proxies it).
+
+## Icebox (deferred, opt-in)
+
+- **audio.cpp ([0xShug0/audio.cpp](https://github.com/0xShug0/audio.cpp)) as a GPU
+  engine path.** Pure-C++/GGML inference with its own OpenAI-compatible server,
+  CUDA-optimized (the box has an RTX 5090; oidio is CPU-only). v0.1 (Jun 2026),
+  C++-only (no Go bindings), GGUF + broad streaming not done yet — too early to
+  bind into oidio. **Not for TTS** (Kokoro/generic solutions are fine — no
+  interest). What's actually compelling:
+  - **Streaming diarization (Sortformer).** sherpa diarization is offline-only;
+    Sortformer is a streaming model → the realtime-diarization we shelved becomes
+    possible. **Synthesis worth noting:** run oidio's stateless `resolveSpeakers`
+    identity layer *on top of* Sortformer's live segments → **realtime speaker
+    UUIDs**, which neither tool does alone.
+  - GPU STT (Parakeet-TDT / Qwen3-ASR) if CPU latency ever bites.
+  - **Cheap integration path** (no rewrite): run audio.cpp's server, let corrallm
+    proxy it as a second audio backend — same pattern oidio uses. Revisit when it
+    matures past v0.1.
