@@ -11,7 +11,7 @@ import (
 // surface). Mirrors corrallm so a client/LLM sees consistent names.
 func capabilityOf(typ string) string {
 	switch typ {
-	case "transducer", "diarize":
+	case "transducer", "whisper", "diarize":
 		return "audio.stt"
 	case "tts":
 		return "audio.tts"

@@ -35,7 +35,7 @@ func New(cfg *config.Config) (*Server, error) {
 	for name, spec := range cfg.Models {
 		m := &model{name: name, typ: spec.Type}
 		switch spec.Type {
-		case "transducer":
+		case "transducer", "whisper":
 			stt, err := engine.NewSTT(spec)
 			if err != nil {
 				return nil, fmt.Errorf("model %q: %w", name, err)

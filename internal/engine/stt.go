@@ -28,29 +28,43 @@ type Result struct {
 	Timestamps []float32
 }
 
-// NewSTT builds an offline transducer recognizer from a model spec.
+// NewSTT builds an offline recognizer from a model spec. type=whisper builds a
+// sherpa Whisper recognizer (cased + punctuated output); anything else builds a
+// transducer (encoder/decoder/joiner/tokens, normalized upper-case output).
 func NewSTT(spec config.ModelSpec) (*STT, error) {
-	if spec.Encoder == "" || spec.Decoder == "" || spec.Joiner == "" || spec.Tokens == "" {
-		return nil, fmt.Errorf("transducer needs encoder, decoder, joiner, and tokens")
+	lang := spec.Language
+	if lang == "" {
+		lang = "en"
 	}
 	c := sherpa.OfflineRecognizerConfig{}
 	c.FeatConfig.SampleRate = 16000
 	c.FeatConfig.FeatureDim = 80
-	c.ModelConfig.Transducer.Encoder = spec.Encoder
-	c.ModelConfig.Transducer.Decoder = spec.Decoder
-	c.ModelConfig.Transducer.Joiner = spec.Joiner
 	c.ModelConfig.Tokens = spec.Tokens
 	c.ModelConfig.NumThreads = orDefault(spec.NumThreads, 4)
 	c.ModelConfig.Provider = "cpu"
 	c.DecodingMethod = "greedy_search"
 
+	switch spec.Type {
+	case "whisper":
+		if spec.Encoder == "" || spec.Decoder == "" || spec.Tokens == "" {
+			return nil, fmt.Errorf("whisper needs encoder, decoder, and tokens")
+		}
+		c.ModelConfig.Whisper.Encoder = spec.Encoder
+		c.ModelConfig.Whisper.Decoder = spec.Decoder
+		c.ModelConfig.Whisper.Language = lang
+		c.ModelConfig.Whisper.Task = "transcribe"
+	default: // transducer
+		if spec.Encoder == "" || spec.Decoder == "" || spec.Joiner == "" || spec.Tokens == "" {
+			return nil, fmt.Errorf("transducer needs encoder, decoder, joiner, and tokens")
+		}
+		c.ModelConfig.Transducer.Encoder = spec.Encoder
+		c.ModelConfig.Transducer.Decoder = spec.Decoder
+		c.ModelConfig.Transducer.Joiner = spec.Joiner
+	}
+
 	rec := sherpa.NewOfflineRecognizer(&c)
 	if rec == nil {
 		return nil, fmt.Errorf("failed to init recognizer (check model paths)")
-	}
-	lang := spec.Language
-	if lang == "" {
-		lang = "en"
 	}
 	return &STT{rec: rec, lang: lang}, nil
 }
