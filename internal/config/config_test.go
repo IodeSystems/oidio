@@ -25,6 +25,18 @@ func TestLoadValid(t *testing.T) {
 	}
 }
 
+func TestLoadRealtimeEndpointRules(t *testing.T) {
+	c, err := Load(write(t, "rt.yaml",
+		"addr: \":9\"\nmodels:\n  realtime-stt:\n    type: realtime\n    encoder: e.onnx\n    decoder: d.onnx\n    joiner: j.onnx\n    tokens: t.txt\n    rule1_silence: 3.0\n    rule2_silence: 1.4\n    rule3_min_utterance: 25\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := c.Models["realtime-stt"]
+	if m.Rule1Silence != 3.0 || m.Rule2Silence != 1.4 || m.Rule3MinUtterance != 25 {
+		t.Fatalf("endpoint rules not parsed: %+v", m)
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	if _, err := Load(write(t, "empty.yaml", "addr: \":9\"\n")); err == nil {
 		t.Error("config with no models should error")

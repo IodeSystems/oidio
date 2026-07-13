@@ -56,8 +56,13 @@ type ModelSpec struct {
 	// Realtime (type: realtime) — a STREAMING transducer (reuses encoder/decoder/
 	// joiner/tokens above, pointed at a streaming model). InputSampleRate is the
 	// PCM rate the client sends (OpenAI Realtime uses 24000; sherpa resamples).
-	InputSampleRate int     `yaml:"input_sample_rate"` // default 24000
-	Rule2Silence    float32 `yaml:"rule2_silence"`     // end-of-utterance trailing silence, sec (default 0.8)
+	InputSampleRate int `yaml:"input_sample_rate"` // default 24000
+	// Endpoint rules (sherpa-onnx): an utterance ends when ANY fires. Rule2 is the
+	// usual knob — raise it so mid-thought pauses don't cut a turn short; lower it
+	// for snappier endpointing. All in seconds.
+	Rule1Silence      float32 `yaml:"rule1_silence"`       // trailing silence with no speech yet (default 2.4)
+	Rule2Silence      float32 `yaml:"rule2_silence"`       // trailing silence after speech = end of utterance (default 0.8)
+	Rule3MinUtterance float32 `yaml:"rule3_min_utterance"` // force an endpoint past this utterance length (default 20)
 
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")

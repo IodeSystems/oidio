@@ -69,5 +69,9 @@ models:
     joiner:  models/sherpa-onnx-streaming-zipformer-en-2023-06-26/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx
     tokens:  models/sherpa-onnx-streaming-zipformer-en-2023-06-26/tokens.txt
     input_sample_rate: 24000   # OpenAI Realtime clients send 24 kHz; sherpa resamples
-    rule2_silence: 0.8         # end-of-utterance trailing silence (lower = snappier finals)
+    # Endpoint rules (seconds); an utterance ends when ANY fires:
+    rule1_silence: 2.4         # trailing silence with no speech yet
+    rule2_silence: 0.8         # end-of-utterance trailing silence (raise so mid-thought
+                               # pauses don't split a turn; lower for snappier finals)
+    rule3_min_utterance: 20    # force an endpoint past this utterance length
     num_threads: 4

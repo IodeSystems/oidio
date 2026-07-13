@@ -39,9 +39,9 @@ func NewRealtime(spec config.ModelSpec) (*Realtime, error) {
 	c.ModelConfig.Provider = "cpu"
 	c.DecodingMethod = "greedy_search"
 	c.EnableEndpoint = 1
-	c.Rule1MinTrailingSilence = 2.4
+	c.Rule1MinTrailingSilence = orDefaultF(spec.Rule1Silence, 2.4)
 	c.Rule2MinTrailingSilence = orDefaultF(spec.Rule2Silence, 0.8)
-	c.Rule3MinUtteranceLength = 20
+	c.Rule3MinUtteranceLength = orDefaultF(spec.Rule3MinUtterance, 20)
 
 	rec := sherpa.NewOnlineRecognizer(&c)
 	if rec == nil {
