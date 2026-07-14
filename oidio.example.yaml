@@ -74,4 +74,5 @@ models:
     rule2_silence: 0.8         # end-of-utterance trailing silence (raise so mid-thought
                                # pauses don't split a turn; lower for snappier finals)
     rule3_min_utterance: 20    # force an endpoint past this utterance length
+    spoken_punctuation: true   # dictated "question mark" -> "?", "exclamation point/mark" -> "!"
     num_threads: 4

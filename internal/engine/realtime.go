@@ -13,9 +13,10 @@ import (
 // shared; each WS session gets its own OnlineStream. Decode/result calls are
 // serialized through a mutex (one onnx session, many streams).
 type Realtime struct {
-	rec    *sherpa.OnlineRecognizer
-	mu     sync.Mutex
-	inRate int
+	rec         *sherpa.OnlineRecognizer
+	mu          sync.Mutex
+	inRate      int
+	spokenPunct bool
 }
 
 // RTEvent is one thing to send the client: an incremental Delta and/or a final
@@ -51,7 +52,7 @@ func NewRealtime(spec config.ModelSpec) (*Realtime, error) {
 	if inRate <= 0 {
 		inRate = 24000
 	}
-	return &Realtime{rec: rec, inRate: inRate}, nil
+	return &Realtime{rec: rec, inRate: inRate, spokenPunct: spec.SpokenPunctuation}, nil
 }
 
 // RTSession is one live connection's decode state.
@@ -117,7 +118,11 @@ func (s *RTSession) drain(final bool) []RTEvent {
 	}
 	if final || s.e.rec.IsEndpoint(s.stream) {
 		if text != "" {
-			ev = append(ev, RTEvent{Completed: text})
+			completed := text
+			if s.e.spokenPunct { // final only; deltas stream raw and the final corrects them
+				completed = applySpokenPunctuation(completed)
+			}
+			ev = append(ev, RTEvent{Completed: completed})
 		}
 		s.e.rec.Reset(s.stream)
 		s.last = ""

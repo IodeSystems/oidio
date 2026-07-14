@@ -66,6 +66,11 @@ type ModelSpec struct {
 
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")
+
+	// SpokenPunctuation rewrites dictated punctuation words in the final transcript
+	// — "question mark" → "?", "exclamation point/mark" → "!". Opt-in (a dictation
+	// nicety, not raw transcription). Applies to batch (stt/whisper) and realtime.
+	SpokenPunctuation bool `yaml:"spoken_punctuation"`
 }
 
 // Load reads and validates the config file.

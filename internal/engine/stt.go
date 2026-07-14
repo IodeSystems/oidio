@@ -15,9 +15,10 @@ import (
 // CPU-bound inference, and concurrency is already bounded upstream (corrallm
 // slots). Throughput is unaffected on a saturated box; correctness is guaranteed.
 type STT struct {
-	mu   sync.Mutex
-	rec  *sherpa.OfflineRecognizer
-	lang string
+	mu          sync.Mutex
+	rec         *sherpa.OfflineRecognizer
+	lang        string
+	spokenPunct bool
 }
 
 // Result is one transcription: the text plus per-token pieces and timestamps
@@ -66,7 +67,7 @@ func NewSTT(spec config.ModelSpec) (*STT, error) {
 	if rec == nil {
 		return nil, fmt.Errorf("failed to init recognizer (check model paths)")
 	}
-	return &STT{rec: rec, lang: lang}, nil
+	return &STT{rec: rec, lang: lang, spokenPunct: spec.SpokenPunctuation}, nil
 }
 
 // Language is the label reported in verbose_json responses.
@@ -81,8 +82,12 @@ func (s *STT) Transcribe(samples []float32, sampleRate int) Result {
 	st.AcceptWaveform(sampleRate, samples)
 	s.rec.Decode(st)
 	r := st.GetResult()
+	text := strings.TrimSpace(r.Text)
+	if s.spokenPunct {
+		text = applySpokenPunctuation(text)
+	}
 	return Result{
-		Text:       strings.TrimSpace(r.Text),
+		Text:       text,
 		Tokens:     r.Tokens,
 		Timestamps: r.Timestamps,
 	}
