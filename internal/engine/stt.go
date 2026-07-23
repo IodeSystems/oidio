@@ -3,6 +3,7 @@ package engine
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -41,7 +42,7 @@ func NewSTT(spec config.ModelSpec) (*STT, error) {
 	c.FeatConfig.SampleRate = 16000
 	c.FeatConfig.FeatureDim = 80
 	c.ModelConfig.Tokens = spec.Tokens
-	c.ModelConfig.NumThreads = orDefault(spec.NumThreads, 4)
+	c.ModelConfig.NumThreads = reserveCore(orDefault(spec.NumThreads, 4))
 	c.ModelConfig.Provider = "cpu"
 	c.DecodingMethod = "greedy_search"
 
@@ -63,7 +64,10 @@ func NewSTT(spec config.ModelSpec) (*STT, error) {
 		c.ModelConfig.Transducer.Joiner = spec.Joiner
 	}
 
-	rec := sherpa.NewOfflineRecognizer(&c)
+	// Construct under a raised niceness so the onnxruntime worker pool inherits
+	// low CPU priority (Linux); see withNice.
+	var rec *sherpa.OfflineRecognizer
+	withNice(spec.Nice, func() { rec = sherpa.NewOfflineRecognizer(&c) })
 	if rec == nil {
 		return nil, fmt.Errorf("failed to init recognizer (check model paths)")
 	}
@@ -101,4 +105,14 @@ func orDefault(v, d int) int {
 		return v
 	}
 	return d
+}
+
+// reserveCore caps CPU-bound inference threads to GOMAXPROCS-1 so a decode burst
+// can't occupy every core and starve the HTTP/WS server into 503s. No cap when
+// there's only one usable core (nothing to reserve).
+func reserveCore(nt int) int {
+	if headroom := runtime.GOMAXPROCS(0) - 1; headroom >= 1 && nt > headroom {
+		return headroom
+	}
+	return nt
 }

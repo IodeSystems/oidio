@@ -15,6 +15,9 @@ models:
     tokens:  models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/tokens.txt
     num_threads: 4
     language: en
+    nice: 5                  # Linux: lower the recognizer pool's CPU priority so a decode
+                             # burst can't starve the HTTP server. num_threads also auto-caps
+                             # to GOMAXPROCS-1, reserving a core for request serving.
 
   # Diarized STT — same transducer + a pyannote segmentation model and a speaker
   # embedding model. Returns speaker-labeled segments + a stateless `speakers`
@@ -30,6 +33,9 @@ models:
     embedding:    models/wespeaker_en_voxceleb_CAMpp.onnx
     cluster_threshold: 0.7   # lower → more speakers; or set num_clusters for a known count
     num_threads: 4
+    nice: 10                 # Linux: raise the diarize worker pool's niceness (lower CPU
+                             # priority) so a diarize burst won't starve the HTTP server into
+                             # 503s. diarize also auto-reserves one core for request serving.
 
   # TTS — a sherpa-onnx Kokoro model. Standard OpenAI POST /v1/audio/speech
   # (mp3/opus/aac/flac/wav/pcm). `voices` maps an OpenAI voice name → the speaker
@@ -76,3 +82,5 @@ models:
     rule3_min_utterance: 20    # force an endpoint past this utterance length
     spoken_punctuation: true   # dictated "question mark" -> "?", "exclamation point/mark" -> "!"
     num_threads: 4
+    nice: 5                    # Linux: lower the streaming pool's CPU priority + auto-cap
+                               # num_threads to GOMAXPROCS-1 so decoding won't 503 the server

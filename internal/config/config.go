@@ -67,6 +67,15 @@ type ModelSpec struct {
 	NumThreads int    `yaml:"num_threads"`
 	Language   string `yaml:"language"` // label reported in verbose_json (default "en")
 
+	// Nice raises the OS scheduling niceness of this model's onnxruntime worker
+	// pool (Linux only; higher = lower CPU priority, 0 = default). Wired for the
+	// CPU-bound engines (diarize, stt/whisper, realtime), whose inference would
+	// otherwise saturate every core and starve the HTTP/WS server into 503s — a
+	// niced pool lets request-serving goroutines (nice 0) preempt it. Combined
+	// with the automatic thread cap (num_threads is capped to GOMAXPROCS-1 to
+	// reserve a core for the server), it keeps oidio responsive under load.
+	Nice int `yaml:"nice"`
+
 	// SpokenPunctuation rewrites dictated punctuation words in the final transcript
 	// — "question mark" → "?", "exclamation point/mark" → "!". Opt-in (a dictation
 	// nicety, not raw transcription). Applies to batch (stt/whisper) and realtime.

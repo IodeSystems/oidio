@@ -53,7 +53,7 @@ func NewDiarizer(spec config.ModelSpec) (*Diarizer, error) {
 	if spec.Segmentation == "" || spec.Embedding == "" {
 		return nil, fmt.Errorf("diarize needs segmentation and embedding models")
 	}
-	nt := orDefault(spec.NumThreads, 4)
+	nt := reserveCore(orDefault(spec.NumThreads, 4))
 
 	ac := sherpa.OfflineRecognizerConfig{}
 	ac.FeatConfig.SampleRate = sampleRate
@@ -65,7 +65,10 @@ func NewDiarizer(spec config.ModelSpec) (*Diarizer, error) {
 	ac.ModelConfig.NumThreads = nt
 	ac.ModelConfig.Provider = "cpu"
 	ac.DecodingMethod = "greedy_search"
-	asr := sherpa.NewOfflineRecognizer(&ac)
+	// Construct the models under a raised niceness so their onnxruntime worker
+	// pools inherit low CPU priority (Linux). See withNice.
+	var asr *sherpa.OfflineRecognizer
+	withNice(spec.Nice, func() { asr = sherpa.NewOfflineRecognizer(&ac) })
 	if asr == nil {
 		return nil, fmt.Errorf("failed to init ASR recognizer (check model paths)")
 	}
@@ -83,13 +86,15 @@ func NewDiarizer(spec config.ModelSpec) (*Diarizer, error) {
 	dc.Clustering.Threshold = thr
 	dc.MinDurationOn = orDefaultF(spec.MinDurationOn, 0.3)
 	dc.MinDurationOff = orDefaultF(spec.MinDurationOff, 0.5)
-	sd := sherpa.NewOfflineSpeakerDiarization(&dc)
+	var sd *sherpa.OfflineSpeakerDiarization
+	withNice(spec.Nice, func() { sd = sherpa.NewOfflineSpeakerDiarization(&dc) })
 	if sd == nil {
 		return nil, fmt.Errorf("failed to init diarization (check segmentation/embedding models)")
 	}
 
 	ec := sherpa.SpeakerEmbeddingExtractorConfig{Model: spec.Embedding, NumThreads: nt, Provider: "cpu"}
-	ex := sherpa.NewSpeakerEmbeddingExtractor(&ec)
+	var ex *sherpa.SpeakerEmbeddingExtractor
+	withNice(spec.Nice, func() { ex = sherpa.NewSpeakerEmbeddingExtractor(&ec) })
 	if ex == nil {
 		return nil, fmt.Errorf("failed to init speaker embedding extractor")
 	}

@@ -36,7 +36,7 @@ func NewRealtime(spec config.ModelSpec) (*Realtime, error) {
 	c.ModelConfig.Transducer.Decoder = spec.Decoder
 	c.ModelConfig.Transducer.Joiner = spec.Joiner
 	c.ModelConfig.Tokens = spec.Tokens
-	c.ModelConfig.NumThreads = orDefault(spec.NumThreads, 2)
+	c.ModelConfig.NumThreads = reserveCore(orDefault(spec.NumThreads, 2))
 	c.ModelConfig.Provider = "cpu"
 	c.DecodingMethod = "greedy_search"
 	c.EnableEndpoint = 1
@@ -44,7 +44,10 @@ func NewRealtime(spec config.ModelSpec) (*Realtime, error) {
 	c.Rule2MinTrailingSilence = orDefaultF(spec.Rule2Silence, 0.8)
 	c.Rule3MinUtteranceLength = orDefaultF(spec.Rule3MinUtterance, 20)
 
-	rec := sherpa.NewOnlineRecognizer(&c)
+	// Construct under a raised niceness so the onnxruntime worker pool inherits
+	// low CPU priority (Linux); see withNice.
+	var rec *sherpa.OnlineRecognizer
+	withNice(spec.Nice, func() { rec = sherpa.NewOnlineRecognizer(&c) })
 	if rec == nil {
 		return nil, fmt.Errorf("failed to init online recognizer (check streaming model paths)")
 	}

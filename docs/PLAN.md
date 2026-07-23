@@ -26,6 +26,13 @@ only where OpenAI has no equivalent, and only additively.
     config); pseudo-segments for the plain STT path.
   - **risk**: auto speaker-count is threshold-sensitive (`cluster_threshold`
     default 0.7); pass a known count when possible.
+  - **CPU starvation guard** (done): the CPU-bound in-process engines (diarize,
+    stt/whisper, realtime) used to saturate every core and 503 the HTTP/WS server.
+    Now, for all three: (1) `num_threads` is auto-capped to `GOMAXPROCS-1`
+    (`reserveCore`, reserve a core for request serving) and (2) a `nice:` config
+    knob raises the onnxruntime worker pool's Linux niceness at model init
+    (`withNice`, per-thread `setpriority`; the pool inherits it), so nice-0 handler
+    goroutines preempt it. No-op off Linux.
 - ✅ **S3 — TTS** (`type: tts`). Done + validated. `POST /v1/audio/speech` via
   Kokoro (`OfflineTts`) → audio bytes. `response_format` mp3/opus/aac/flac (ffmpeg)
   + wav/pcm (native); `voice` resolves through a config name→sid map (or a bare
