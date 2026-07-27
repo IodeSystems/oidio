@@ -29,16 +29,44 @@ type ModelSpec struct {
 	Joiner  string `yaml:"joiner"`
 	Tokens  string `yaml:"tokens"`
 
+	// ModelType names the transducer flavour for sherpa (e.g. nemo_transducer for
+	// NeMo Parakeet/Canary). Optional: sherpa infers it from the model metadata,
+	// and setting it only skips that probe. Named here because the flavours are
+	// NOT interchangeable in output — zipformer/gigaspeech emits ALL-CAPS,
+	// unpunctuated text, while NeMo Parakeet emits cased, punctuated text AND
+	// token timestamps, which is what makes word-level speaker attribution
+	// possible without a second recogniser.
+	ModelType string `yaml:"model_type"`
+
 	// Diarization (type: diarize) — pyannote segmentation + a speaker-embedding
 	// model. ClusterThreshold tunes the speaker count (lower → more speakers);
-	// NumClusters>0 forces a known count. Identity is stateless: the request's
-	// speaker_confidence controls known-speaker matching, not these.
-	Segmentation     string  `yaml:"segmentation"`
-	Embedding        string  `yaml:"embedding"`
-	ClusterThreshold float32 `yaml:"cluster_threshold"` // default 0.7
-	NumClusters      int     `yaml:"num_clusters"`      // 0 = auto (use threshold)
-	MinDurationOn    float32 `yaml:"min_duration_on"`
-	MinDurationOff   float32 `yaml:"min_duration_off"`
+	// NumClusters>0 forces a known count. MergeThreshold post-merges clusters
+	// whose voiceprints match that closely, recovering a speaker that long audio
+	// over-split. All three are defaults; requests override them per call.
+	// Identity is separate: speaker_confidence controls known-speaker matching.
+	Segmentation     string   `yaml:"segmentation"`
+	Embedding        string   `yaml:"embedding"`
+	ClusterThreshold float32  `yaml:"cluster_threshold"` // default 0.7
+	NumClusters      int      `yaml:"num_clusters"`      // 0 = auto (use threshold)
+	MergeThreshold   *float32 `yaml:"merge_threshold"`   // unset = 0.8; 0 = off
+	MinDurationOn    float32  `yaml:"min_duration_on"`
+
+	// TextModel names another loaded model whose recogniser transcribes each
+	// diarized turn, instead of this model's own transducer.
+	//
+	// The two ASR paths are not interchangeable. The diarize transducer here is
+	// zipformer/gigaspeech — a corpus that is uppercase and unpunctuated, so its
+	// output is ALL CAPS with no sentence structure and noticeably weaker
+	// ("PROMISERS WHERE" for "promise or swear"). Whisper produces cased,
+	// punctuated, more accurate text, but has a 30-second receptive field, so it
+	// cannot be pointed at a long recording directly.
+	//
+	// Diarization already cuts the audio into speaker turns, and a turn is
+	// almost always well under 30s — which is exactly the input Whisper wants.
+	// Blending gives speaker labels AND readable text; neither path gives both
+	// alone. Unset keeps the transducer.
+	TextModel      string  `yaml:"text_model"`
+	MinDurationOff float32 `yaml:"min_duration_off"`
 
 	// TTS (type: tts) — a sherpa-onnx Kokoro model. Voices in voices.bin are
 	// indexed by speaker id; `voices` maps an OpenAI `voice` name → that id, and

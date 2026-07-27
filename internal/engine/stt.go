@@ -42,6 +42,7 @@ func NewSTT(spec config.ModelSpec) (*STT, error) {
 	c.FeatConfig.SampleRate = 16000
 	c.FeatConfig.FeatureDim = 80
 	c.ModelConfig.Tokens = spec.Tokens
+	c.ModelConfig.ModelType = spec.ModelType
 	c.ModelConfig.NumThreads = reserveCore(orDefault(spec.NumThreads, 4))
 	c.ModelConfig.Provider = "cpu"
 	c.DecodingMethod = "greedy_search"
@@ -79,6 +80,9 @@ func (s *STT) Language() string { return s.lang }
 
 // Transcribe decodes the whole waveform and returns the result.
 func (s *STT) Transcribe(samples []float32, sampleRate int) Result {
+	if len(samples) == 0 {
+		return Result{} // sherpa's AcceptWaveform indexes samples[0] and would panic
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := sherpa.NewOfflineStream(s.rec)
@@ -86,6 +90,12 @@ func (s *STT) Transcribe(samples []float32, sampleRate int) Result {
 	st.AcceptWaveform(sampleRate, samples)
 	s.rec.Decode(st)
 	r := st.GetResult()
+	if r == nil {
+		// sherpa returns nil for a span it decoded to nothing — a silent or very
+		// short clip. Dereferencing it panicked the whole request, which took out
+		// every turn in a blended diarization, not just the empty one.
+		return Result{}
+	}
 	text := strings.TrimSpace(r.Text)
 	if s.spokenPunct {
 		text = applySpokenPunctuation(text)
