@@ -17,10 +17,14 @@ func SherpaVersion() string { return sherpa.GetVersion() }
 type model struct {
 	name string
 	typ  string
-	stt  *engine.STT      // non-nil for type: transducer
-	diar *engine.Diarizer // non-nil for type: diarize
-	tts  *engine.TTS      // non-nil for type: tts
-	rt   *engine.Realtime // non-nil for type: realtime
+	stt  *engine.STT // non-nil for type: transducer
+	// textModel is another model's name whose recogniser transcribes this
+	// model's diarized turns (type: diarize only). Resolved after every model is
+	// loaded, since it may name one declared later in the file.
+	textModel string
+	diar      *engine.Diarizer // non-nil for type: diarize
+	tts       *engine.TTS      // non-nil for type: tts
+	rt        *engine.Realtime // non-nil for type: realtime
 }
 
 type Server struct {
@@ -47,6 +51,7 @@ func New(cfg *config.Config) (*Server, error) {
 				return nil, fmt.Errorf("model %q: %w", name, err)
 			}
 			m.diar = diar
+			m.textModel = spec.TextModel
 		case "tts":
 			tts, err := engine.NewTTS(spec)
 			if err != nil {
@@ -64,8 +69,36 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 		s.models[name] = m
 	}
+	// Resolved after the load loop: a text_model may name a model declared later
+	// in the file, and a dangling reference must fail at startup rather than
+	// silently falling back to the transducer on every request.
+	for name, m := range s.models {
+		if m.textModel == "" {
+			continue
+		}
+		tm, ok := s.models[m.textModel]
+		if !ok {
+			return nil, fmt.Errorf("model %q: text_model %q is not a configured model", name, m.textModel)
+		}
+		if tm.stt == nil {
+			return nil, fmt.Errorf("model %q: text_model %q is type %q, which has no recogniser", name, m.textModel, tm.typ)
+		}
+	}
 	s.routes()
 	return s, nil
+}
+
+// textRecogniser returns the recogniser that should transcribe m's turns, or nil
+// to use m's own transducer. Validated at startup, so a miss here means the
+// model simply did not ask for a blend.
+func (s *Server) textRecogniser(m *model) *engine.STT {
+	if m.textModel == "" {
+		return nil
+	}
+	if tm, ok := s.models[m.textModel]; ok {
+		return tm.stt
+	}
+	return nil
 }
 
 func (s *Server) routes() {

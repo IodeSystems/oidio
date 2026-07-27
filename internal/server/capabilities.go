@@ -70,7 +70,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	endpoints := []map[string]any{
 		{
 			"path": "/v1/audio/transcriptions", "method": "POST", "capability": "audio.stt",
-			"description": "Speech-to-text (Whisper-compatible). multipart/form-data: model + file. response_format json/verbose_json/text/srt/vtt; stream=true → SSE deltas. A diarize model adds speaker UUIDs on verbose_json segments plus a stateless `speakers` array (uuid + voiceprint + similarity); request args speaker_confidence, known_speakers.",
+			"description": "Speech-to-text (Whisper-compatible). multipart/form-data: model + file. response_format json/verbose_json/text/srt/vtt; stream=true → SSE deltas. A diarize model adds speaker UUIDs on verbose_json segments plus a stateless `speakers` array (uuid + voiceprint + similarity); request args speaker_confidence, known_speakers, cluster_threshold, num_clusters, speaker_merge_threshold.",
 			"models":      byCap["audio.stt"],
 			"example":     fmt.Sprintf("curl -sS %s/v1/audio/transcriptions -F model=%s -F file=@speech.wav", base, sttM),
 		},

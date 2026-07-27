@@ -22,7 +22,9 @@ models:
   # Diarized STT — same transducer + a pyannote segmentation model and a speaker
   # embedding model. Returns speaker-labeled segments + a stateless `speakers`
   # array (UUID + voiceprint + similarity). Request args: speaker_confidence,
-  # known_speakers (JSON [{uuid,embedding}]).
+  # known_speakers (JSON [{uuid,embedding}]), and per-call overrides of the three
+  # clustering knobs below: cluster_threshold, num_clusters,
+  # speaker_merge_threshold.
   stt-diarize:
     type: diarize
     encoder: models/sherpa-onnx-zipformer-gigaspeech-2023-12-12/encoder-epoch-30-avg-1.int8.onnx
@@ -32,6 +34,11 @@ models:
     segmentation: models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx
     embedding:    models/wespeaker_en_voxceleb_CAMpp.onnx
     cluster_threshold: 0.7   # lower → more speakers; or set num_clusters for a known count
+    # merge_threshold: 0.8   # DEFAULT 0.8 when unset. Post-merges two clusters whose
+                             # voiceprints are this close — recovers a speaker that long
+                             # audio over-split into several. Single-link, so it's
+                             # transitive: lowering it risks a chain of borderline links
+                             # fusing two real people. Set 0 to disable entirely.
     num_threads: 4
     nice: 10                 # Linux: raise the diarize worker pool's niceness (lower CPU
                              # priority) so a diarize burst won't starve the HTTP server into

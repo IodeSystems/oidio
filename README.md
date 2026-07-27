@@ -85,6 +85,19 @@ catalog. A `diarize` model returns, per request:
 - The auto-match **confidence threshold is a request argument**, and a consumer
   may pass **known speakers** (`[{uuid, embedding}]`) so UUIDs stay stable across
   calls.
+- The **clustering knobs are request arguments** too: `cluster_threshold` (lower →
+  more speakers) and `num_clusters` (force a known count).
+- `speaker_merge_threshold` collapses clusters whose voiceprints are that close
+  into one speaker, recovering a speaker that long audio over-split. Unset picks
+  a threshold from the cluster count and duration (0.83–0.95): more clusters and
+  more audio mean more chances for some pair to cross the bar, so the bar rises
+  with both. Merging is complete-link — every pair in a group must clear it —
+  because a single bridging cluster otherwise chains unrelated speakers together,
+  which collapsed a 44-minute hearing into one speaker. Pass `0` to disable.
+
+`response_format=srt` / `vtt` on a diarize model emits one cue per speaker turn,
+each prefixed `Speaker N:` (numbered by first appearance — a UUID isn't readable
+in a subtitle). The JSON formats still carry the UUIDs.
 
 Mapping a UUID to a real person ("that's Carl") is the **API consumer's** job, in
 their own system. oidio only emits voiceprints, UUIDs, and similarities. See

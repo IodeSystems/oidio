@@ -2,29 +2,11 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/iodesystems/oidio/internal/engine"
 )
-
-func TestCosine(t *testing.T) {
-	approx := func(got, want float32) bool { d := got - want; return d < 0.001 && d > -0.001 }
-	if c := cosine([]float32{1, 0}, []float32{1, 0}); !approx(c, 1) {
-		t.Errorf("identical = %f, want 1", c)
-	}
-	if c := cosine([]float32{1, 0}, []float32{0, 1}); !approx(c, 0) {
-		t.Errorf("orthogonal = %f, want 0", c)
-	}
-	if c := cosine([]float32{1, 0}, []float32{-1, 0}); !approx(c, -1) {
-		t.Errorf("opposite = %f, want -1", c)
-	}
-	if c := cosine([]float32{1}, []float32{1, 2}); c != 0 {
-		t.Errorf("mismatched length = %f, want 0", c)
-	}
-	if c := cosine(nil, nil); c != 0 {
-		t.Errorf("empty = %f, want 0", c)
-	}
-}
 
 func TestResolveSpeakersMintsDistinct(t *testing.T) {
 	det := []engine.SpeakerVoice{
@@ -67,5 +49,51 @@ func TestResolveSpeakersBelowThresholdMints(t *testing.T) {
 	uuidOf, _ := resolveSpeakers(det, known, 0.9, func() string { return "MINTED" })
 	if uuidOf[0] != "MINTED" {
 		t.Errorf("below-threshold match should mint, got %q", uuidOf[0])
+	}
+}
+
+func TestSpeakerLabelsByFirstAppearance(t *testing.T) {
+	segs := []segment{
+		{Speaker: "b-uuid"}, {Speaker: "a-uuid"}, {Speaker: "b-uuid"},
+	}
+	l := speakerLabels(segs)
+	if l["b-uuid"] != "Speaker 1" || l["a-uuid"] != "Speaker 2" {
+		t.Errorf("labels should number by first appearance, got %v", l)
+	}
+}
+
+func TestDiarCuesSRT(t *testing.T) {
+	segs := []segment{
+		{Start: 0, End: 1.5, Text: "hello there", Speaker: "u1"},
+		{Start: 2, End: 2, Text: "hi", Speaker: "u2"}, // one-token turn: End == Start
+		{Start: 9, End: 9.2, Text: "", Speaker: "u1"}, // empty text is skipped
+	}
+	got := diarCues(segs, false)
+	want := "1\n00:00:00,000 --> 00:00:02,000\nSpeaker 1: hello there\n\n" +
+		"2\n00:00:02,000 --> 00:00:04,000\nSpeaker 2: hi\n\n"
+	if got != want {
+		t.Errorf("srt =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestDiarCuesVTTHeaderAndTimebase(t *testing.T) {
+	got := diarCues([]segment{{Start: 0, End: 0.1, Text: "x", Speaker: "u1"}}, true)
+	if !strings.HasPrefix(got, "WEBVTT\n\n") {
+		t.Errorf("vtt must start with the WEBVTT header, got %q", got)
+	}
+	if !strings.Contains(got, "00:00:00.000 --> ") { // vtt uses '.' not ','
+		t.Errorf("vtt should use dot-millisecond times, got %q", got)
+	}
+}
+
+// A cue is stretched toward the next turn but never across a long silence.
+func TestDiarCuesCapsExtensionOverSilence(t *testing.T) {
+	segs := []segment{
+		{Start: 0, End: 1, Text: "a", Speaker: "u1"},
+		{Start: 60, End: 61, Text: "b", Speaker: "u1"},
+	}
+	got := diarCues(segs, false)
+	if !strings.Contains(got, "00:00:00,000 --> 00:00:03,000") {
+		t.Errorf("first cue should stop 2s after its last token, got %q", got)
 	}
 }

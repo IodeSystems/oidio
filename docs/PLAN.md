@@ -10,8 +10,17 @@ only where OpenAI has no equivalent, and only additively.
   `stream=true` → OpenAI SSE (`transcript.text.delta` … `transcript.text.done`).
   ffmpeg decode → 16 kHz mono. Config-driven model registry. Validated end-to-end
   against the gigaspeech int8 zipformer.
+  - ✅ **m4a/mp4 uploads (bug fix).** `DecodePCM` piped uploads to ffmpeg's stdin,
+    but the MP4 demuxer must seek (moov atom is usually at the END of the file);
+    on a pipe it failed with "partial file" *and still exited 0*, so decode
+    returned zero samples with a nil error. sherpa then indexed `samples[0]` and
+    panicked the connection. Now: spool the upload to a temp file so ffmpeg gets a
+    seekable path, error on a zero-sample decode, and guard `STT.Transcribe` /
+    `Diarizer.Process` against empty input. **No m4a upload worked before this.**
   - **next**: pseudo-segments from token timestamps (currently one whole-clip
     segment); whisper/sense-voice model types; honest `translate` task wiring.
+  - **risk**: uploads now hit disk twice (multipart spool + decode spool). Fine at
+    current sizes; revisit if large-file throughput matters.
 - ✅ **S2 — Diarization** (`type: diarize`). Done + validated. Offline
   `OfflineSpeakerDiarization` (pyannote segmentation + speaker embedding +
   clustering) + the transducer ASR, aligned by token timestamp → speaker-labeled
@@ -20,12 +29,34 @@ only where OpenAI has no equivalent, and only additively.
   response carries each speaker's 512-d voiceprint `embedding` and a `similarity`
   object (cosine to the others). No server-side catalog; names live at the caller.
   Request args (additive multipart fields): `speaker_confidence`, `known_speakers`
-  (JSON `[{uuid,embedding}]`). Validated on the real 2-speaker EN clips — correct
+  (JSON `[{uuid,embedding}]`), `cluster_threshold`, `num_clusters`,
+  `speaker_merge_threshold`. Validated on the real 2-speaker EN clips — correct
   count, and a passed-back voiceprint reuses its UUID.
-  - **next**: per-request `num_speakers`/clustering override (currently model
-    config); pseudo-segments for the plain STT path.
-  - **risk**: auto speaker-count is threshold-sensitive (`cluster_threshold`
-    default 0.7); pass a known count when possible.
+  - ✅ **Per-request clustering + merge pass.** The clustering knobs are now
+    arguments, not just model config (sherpa `SetConfig` rewrites clustering with
+    no model reload; defaults are re-applied every call so an override can't leak
+    across requests on the shared `sd`). `speaker_merge_threshold` adds an
+    optional union-find pass over the pairwise voiceprint cosines: clusters that
+    close collapse to one speaker, spans are remapped, and the group is re-embedded
+    over its full concatenated audio before alignment — so merged runs coalesce
+    into single segments. Off by default (`merge_threshold: 0`).
+  - ✅ **SRT/VTT on the diarize path.** `response_format=srt|vtt` used to fall
+    through to JSON here. Now one cue per speaker turn, prefixed `Speaker N:`
+    (numbered by first appearance; UUIDs are unreadable in a subtitle). Segment
+    times are token-START timestamps, so cues stretch to the next turn's start,
+    capped at 2 s so a cue can't span a long silence, floored at 0.5 s.
+  - **next**: pseudo-segments for the plain STT path.
+  - **risks**: merging is **single-link, so transitive** — A–B and B–C fuse A and C
+    even when A–C is below threshold; one bad link can join two real people. Keep
+    the threshold high (≈0.8+). **Untested on real audio** — the merge logic has
+    pure unit tests only; no end-to-end run against a long multi-speaker clip has
+    been done, so the useful threshold value is unknown. Auto speaker-count remains
+    threshold-sensitive; pass `num_clusters` when the count is known.
+  - **blocking decision (user)**: whether to enable `merge_threshold` by default in
+    the shipped config, and at what value — needs a real long-file validation run
+    first.
+  - **optional extension**: return the merge decisions in the response (which local
+    clusters collapsed, at what cosine) so a consumer can audit or override them.
   - **CPU starvation guard** (done): the CPU-bound in-process engines (diarize,
     stt/whisper, realtime) used to saturate every core and 503 the HTTP/WS server.
     Now, for all three: (1) `num_threads` is auto-capped to `GOMAXPROCS-1`
@@ -70,8 +101,16 @@ storing names server-side is the wrong layer.
 
 Per diarized request:
 
-- **Threshold is an argument.** The auto-match confidence is a request parameter,
-  not server config.
+- **Thresholds are arguments.** The auto-match confidence (`speaker_confidence`)
+  and the clustering knobs (`cluster_threshold`, `num_clusters`,
+  `speaker_merge_threshold`) are all request parameters; server config only sets
+  their defaults.
+- **Over-split recovery is server-side, opt-in.** Long audio makes AHC split one
+  person into several clusters. `speaker_merge_threshold` collapses clusters whose
+  voiceprints match that closely, before UUIDs are assigned — the server acting on
+  the same cosine evidence it already returns. It stays opt-in because merging two
+  real people is worse than emitting two ids for one; the `similarity` matrix is
+  still returned either way, so a consumer can also do this itself.
 - **Speakers are UUIDs.** Each distinct speaker gets a UUID, stable within the
   request. Each `verbose_json` segment carries `speaker: "<uuid>"`.
 - **Result carries the voiceprints + similarities.** A top-level `speakers` array:

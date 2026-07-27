@@ -73,14 +73,19 @@ func (s *Server) handleTranscriptions(w http.ResponseWriter, r *http.Request) {
 }
 
 // segment mirrors OpenAI's verbose_json segment object, plus an additive
-// `speaker` field (empty until diarization lands — diarization will populate it
-// with a per-request stable speaker UUID; see docs/PLAN.md).
+// `speaker` field — a per-request stable speaker UUID on the diarize path, empty
+// on the plain STT path. See docs/PLAN.md.
 type segment struct {
 	ID      int     `json:"id"`
 	Start   float64 `json:"start"`
 	End     float64 `json:"end"`
 	Text    string  `json:"text"`
 	Speaker string  `json:"speaker,omitempty"`
+	// Overlap marks a span that runs concurrently with another speaker's — the
+	// crosstalk the pyannote segmentation model detects. Emitted so a caller can
+	// route these to human review instead of trusting the attribution: an
+	// interjection inside someone else's turn is where misattribution happens.
+	Overlap bool `json:"overlap,omitempty"`
 }
 
 func verboseJSON(res engine.Result, lang string, dur float64) map[string]any {
