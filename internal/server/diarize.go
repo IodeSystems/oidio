@@ -137,14 +137,53 @@ func (s *Server) handleDiarize(w http.ResponseWriter, r *http.Request, m *model,
 	}
 	// json and verbose_json both carry the additive speaker data; a plain OpenAI
 	// client just reads .text and ignores segments/speakers.
-	writeJSON(w, map[string]any{
+	out := map[string]any{
 		"task":     "transcribe",
 		"language": m.diar.Language(),
 		"duration": res.Duration,
 		"text":     res.Text,
 		"segments": segs,
 		"speakers": speakers,
-	})
+	}
+	// words[] is OpenAI's timestamp_granularities=word output, plus a speaker per
+	// word. Emitted whenever the recogniser supplies timestamps, because a
+	// consumer that edits segments needs times that do NOT depend on the
+	// segmentation: interpolating a word's position within its turn assumes an
+	// even speaking rate, and one pause puts the estimate 5-8 seconds out. Word
+	// times are absolute, so they survive any amount of splitting and rejoining.
+	if len(res.Words) > 0 && wantWords(r, format) {
+		ws := make([]wordOut, 0, len(res.Words))
+		for _, x := range res.Words {
+			ws = append(ws, wordOut{Word: x.Text, Start: round(x.Start, 3), Speaker: uuidOf[x.Speaker]})
+		}
+		out["words"] = ws
+	}
+	writeJSON(w, out)
+}
+
+// wordOut mirrors OpenAI's word object (word/start/end) with an additive
+// speaker. `end` is omitted rather than guessed: the recogniser reports when a
+// word STARTS, and inventing an end from the next word's start would be a
+// fabricated number in a field consumers reasonably trust.
+type wordOut struct {
+	Word    string  `json:"word"`
+	Start   float64 `json:"start"`
+	Speaker string  `json:"speaker,omitempty"`
+}
+
+// wantWords honours OpenAI's timestamp_granularities[] when given, and otherwise
+// includes words on verbose_json. Diarization already costs a minute a minute;
+// withholding data the caller has already paid for helps nobody.
+func wantWords(r *http.Request, format string) bool {
+	if vs, ok := r.Form["timestamp_granularities[]"]; ok {
+		for _, v := range vs {
+			if v == "word" {
+				return true
+			}
+		}
+		return false
+	}
+	return format == "verbose_json"
 }
 
 // resolveSpeakers is the stateless-identity core: map each detected speaker's
