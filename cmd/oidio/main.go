@@ -5,6 +5,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -13,6 +14,27 @@ import (
 )
 
 func main() {
+	// Subcommands, with bare `oidio` still meaning `serve` — corrallm and every
+	// existing unit file invoke it with flags and no verb.
+	if len(os.Args) > 1 && os.Args[1] == "speakers" {
+		if len(os.Args) > 2 && os.Args[2] == "review" {
+			speakersReview(os.Args[3:])
+			return
+		}
+		fmt.Fprintln(os.Stderr, "usage: oidio speakers review --audio FILE TRANSCRIPT.json")
+		os.Exit(2)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "verify" {
+		verifyCmd(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		os.Args = append(os.Args[:1], os.Args[2:]...)
+	}
+	serve()
+}
+
+func serve() {
 	cfgPath := flag.String("config", env("OIDIO_CONFIG", "oidio.yaml"), "path to config file")
 	addr := flag.String("addr", env("OIDIO_ADDR", ""), "listen address (overrides config)")
 	flag.Parse()
