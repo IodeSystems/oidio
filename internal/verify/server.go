@@ -36,7 +36,22 @@ type Segment struct {
 	Start   float64 `json:"start"`
 	End     float64 `json:"end"`
 	Text    string  `json:"text"`
-	Speaker string  `json:"speaker"`
+
+	// Speaker is the PERSON, as decided by a human. Mutable.
+	Speaker string `json:"speaker"`
+
+	// Cluster is what the MACHINE grouped this turn into. Immutable, and kept
+	// separate from Speaker because they answer different questions and were
+	// previously the same field — which is what made the tool ambiguous. Picking
+	// a speaker for one turn and naming two clusters the same person both wrote
+	// `speaker`, so a local correction and a global identity claim were
+	// indistinguishable in the data and surprising in the UI.
+	//
+	// Holding the machine's grouping also makes a bulk correction possible:
+	// "every turn the diarizer called this cluster is actually X" is the common
+	// repair, and without the original grouping it cannot be expressed once the
+	// first turn has been reassigned.
+	Cluster string `json:"cluster,omitempty"`
 
 	// Confirmed marks a turn a person has actually ruled on. Without it an
 	// untouched segment and a segment judged correct are indistinguishable, and
@@ -53,6 +68,13 @@ type Segment struct {
 	// word error rate — scoring WER against un-reviewed output would measure the
 	// recogniser against itself and report a flawless zero.
 	Corrected bool `json:"corrected,omitempty"`
+}
+
+// Word is one recogniser-timed word. Times are absolute and independent of the
+// segmentation, which is what makes them usable after editing.
+type Word struct {
+	Word  string  `json:"word"`
+	Start float64 `json:"start"`
 }
 
 // TruthFile is what the workbench writes: the corrected transcript plus the
@@ -75,6 +97,11 @@ type Server struct {
 	original []Segment
 	segments []Segment
 	speakers map[string]string
+
+	// words carry ABSOLUTE times from the recogniser, so they stay correct
+	// through any amount of splitting and rejoining — unlike a position within a
+	// segment, which stops meaning anything the moment the segment changes.
+	words []Word
 }
 
 func New(audioPath, transPath, speakPath, truthPath string) (*Server, error) {
@@ -89,6 +116,7 @@ func New(audioPath, transPath, speakPath, truthPath string) (*Server, error) {
 	}
 	var doc struct {
 		Segments []Segment `json:"segments"`
+		Words    []Word    `json:"words"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return nil, fmt.Errorf("transcription %s: %w", transPath, err)
@@ -97,12 +125,14 @@ func New(audioPath, transPath, speakPath, truthPath string) (*Server, error) {
 		return nil, fmt.Errorf("%s has no segments — is it a diarize result?", transPath)
 	}
 	s.original = doc.Segments
+	s.words = doc.Words
 	s.segments = append([]Segment(nil), doc.Segments...)
 	if _, err := os.Stat(audioPath); err != nil {
 		return nil, fmt.Errorf("audio: %w", err)
 	}
 	s.loadSpeakers()
 	s.loadTruth()
+	s.backfillClusters()
 	return s, nil
 }
 
@@ -158,6 +188,30 @@ func (s *Server) loadTruth() {
 	}
 }
 
+// backfillClusters recovers the machine's grouping for truth files written
+// before Cluster existed, by asking the ORIGINAL transcription who it thought
+// was speaking at each turn's midpoint. Reading it back from the current speaker
+// would be wrong: by the time a pass is under way, that field holds human
+// corrections, and the machine's grouping would be silently overwritten with the
+// answers derived from it.
+func (s *Server) backfillClusters() {
+	for i := range s.segments {
+		if s.segments[i].Cluster != "" {
+			continue
+		}
+		mid := (s.segments[i].Start + s.segments[i].End) / 2
+		for _, o := range s.original {
+			if o.Start <= mid && mid < o.End {
+				s.segments[i].Cluster = o.Speaker
+				break
+			}
+		}
+		if s.segments[i].Cluster == "" {
+			s.segments[i].Cluster = s.segments[i].Speaker
+		}
+	}
+}
+
 // Listen binds a port chosen by the OS, so several hearings can be labelled at
 // once without coordinating port numbers. The caller prints what it returns.
 func Listen(host string) (net.Listener, string, error) { return ListenOn(host, "") }
@@ -208,6 +262,7 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 		"segments":  s.segments,
 		"original":  s.original,
 		"speakers":  s.speakers,
+		"words":     s.words,
 		"truthPath": s.truthPath,
 	})
 }

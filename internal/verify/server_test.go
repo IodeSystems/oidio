@@ -294,3 +294,48 @@ func TestCorrectedTextIsMarkedAndPersisted(t *testing.T) {
 		t.Fatalf("untouched text must not claim to be corrected: %+v", tf.Segments[1])
 	}
 }
+
+// Word times must reach the page. Interpolating a word's position inside its
+// turn assumes an even speaking rate; one pause put the estimate 5-8 seconds out,
+// and the error compounded across splits because a position within a segment
+// stops meaning anything once the segment changes.
+func TestWordTimesAreServedWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	trans := filepath.Join(dir, "h.json")
+	audio := filepath.Join(dir, "a.mp4")
+	_ = os.WriteFile(trans, []byte(`{"segments":[{"id":0,"start":0,"end":4,"speaker":"aaa","text":"it is so"}],
+		"words":[{"word":"it","start":0.1},{"word":"is","start":2.9},{"word":"so","start":3.4}]}`), 0o644)
+	_ = os.WriteFile(audio, []byte("x"), 0o644)
+	s, err := New(audio, trans, "", filepath.Join(dir, "t.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.words) != 3 || s.words[1].Start != 2.9 {
+		t.Fatalf("words not loaded: %+v", s.words)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		Words []Word `json:"words"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Words) != 3 || got.Words[2].Word != "so" {
+		t.Fatalf("words not served: %+v", got.Words)
+	}
+}
+
+// A transcript with no word timestamps must still work — older files and any
+// recogniser without them fall back to interpolation rather than breaking.
+func TestMissingWordTimesIsNotAnError(t *testing.T) {
+	s, _ := fixture(t)
+	if len(s.words) != 0 {
+		t.Fatalf("expected no words, got %+v", s.words)
+	}
+}
