@@ -51,6 +51,7 @@ main{padding:10px 16px 180px;transition:padding-bottom .15s}
 .txt{white-space:pre-wrap;font-size:1.02rem;line-height:1.6}
 .txt w{cursor:pointer;border-radius:3px}
 .txt.splitting{line-height:2.1}
+.wave{display:block;width:100%;height:34px;margin:4px 0 2px;cursor:pointer;border-radius:3px;background:rgba(127,127,127,.07)}
 .txt .gap{display:inline-block;width:3px;height:1.1em;vertical-align:-.2em;margin:0 2px;border-radius:2px}
 .txt .gap.on{background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .txt w:hover{background:rgba(76,141,255,.25)}
@@ -149,6 +150,10 @@ let segs=[], speakers={}, order=[], cur=0, stopAt=null, mode='list', caret=1, hi
 fetch('api/data').then(r=>r.json()).then(d=>{
   document.getElementById('file').textContent=d.audio;
   A.src='audio'; speakers=d.speakers||{}; segs=d.segments||[]; WORDS=d.words||[];
+  PEAKRATE=d.peakRate||50;
+  // Fetched after the transcript so the page is usable immediately; the strip
+  // appears when it arrives.
+  fetch('api/peaks').then(r=>r.arrayBuffer()).then(b=>{PEAKS=new Uint8Array(b);render()}).catch(()=>{});
   segs.sort((a,b)=>a.start-b.start);
   // Fixes pairs left by an earlier session, before any new edit is made.
   if(coalesce()) save();
@@ -273,6 +278,7 @@ function render(){
       else play();
     };
     L.appendChild(d);
+    if(i===cur&&PEAKS) L.appendChild(waveFor(s));
     if(i===cur&&mode==='text') L.appendChild(textEditor(s));
     if(i===cur&&mode==='pick') L.appendChild(pickerBox());
   });
@@ -293,6 +299,59 @@ function stats(){
 // The editor shows the turn as words with a caret BETWEEN them, because a split
 // is a claim about a boundary, not about a word.
 function words(t){ return (t||'').split(/\s+/).filter(Boolean) }
+
+// A waveform strip for the CURRENT turn only.
+//
+// Gecko-style whole-file timelines suit a timeline UI; this one scrolls turns,
+// and the question being asked is always local — "where inside THIS turn does
+// the voice change?" A speaker change almost always sits in a silence, and
+// silence is the one thing an amplitude strip shows at a glance. Without it,
+// finding a boundary in a two-minute turn is scrubbing by ear.
+//
+// It is a search aid and nothing more. The attribution still has to be heard,
+// which is why the strip cannot be committed from — clicking it moves the cut
+// and plays, it never splits.
+function waveFor(s){
+  const c=document.createElement('canvas');
+  c.className='wave';
+  const w=Math.max(300,Math.floor(L.clientWidth)-40), h=34;
+  c.width=w*2; c.height=h*2; c.style.height=h+'px';
+  const g=c.getContext('2d');
+  g.scale(2,2);
+  const a=Math.floor(s.start*PEAKRATE), b=Math.min(PEAKS.length,Math.ceil(s.end*PEAKRATE));
+  const n=Math.max(1,b-a);
+  const css=getComputedStyle(document.body);
+  g.fillStyle=css.getPropertyValue('--dim')||'#888';
+  for(let x=0;x<w;x++){
+    // Max over the bucket, not mean: a mean smears a short pause into the
+    // speech either side of it, which erases the thing being looked for.
+    let m=0;
+    const lo=a+Math.floor(x*n/w), hi=a+Math.floor((x+1)*n/w);
+    for(let i=lo;i<Math.max(lo+1,hi);i++) if(PEAKS[i]>m) m=PEAKS[i];
+    const bar=Math.max(1,(m/255)*(h-6));
+    g.fillRect(x,(h-bar)/2,1,bar);
+  }
+  // Word boundaries, so the strip and the text line up visually.
+  const wt=wordTimes(s), span=(s.end-s.start)||1;
+  g.fillStyle=css.getPropertyValue('--accent')||'#4c8dff';
+  if(mode==='split'&&wt[caret]!==undefined){
+    const x=((wt[caret]-s.start)/span)*w;
+    g.fillRect(x-1,0,2,h);
+  }
+  c.onclick=ev=>{
+    const r=c.getBoundingClientRect();
+    const t=s.start+((ev.clientX-r.left)/r.width)*span;
+    if(mode==='split'){
+      // Snap to the nearest word boundary: a cut between words is the only kind
+      // that makes sense, and a raw pixel time would land mid-word.
+      let best=1;
+      for(let i=1;i<wt.length;i++) if(Math.abs(wt[i]-t)<Math.abs(wt[best]-t)) best=i;
+      caret=best; render();
+    }
+    A.currentTime=t; stopAt=s.end; A.play();
+  };
+  return c;
+}
 
 // Real word times when the recogniser supplied them, interpolation only as a
 // fallback.
@@ -754,7 +813,7 @@ function cycle(d){
 // The button keeps its shortcut on its face rather than in the bar it hides,
 // because a control whose only instructions are inside the thing it closes is
 // unreachable once closed.
-let WORDS=[];
+let WORDS=[], PEAKS=null, PEAKRATE=50;
 let helpOn = localStorage.getItem('oidio-help')!=='0';
 function toggleHelp(v){
   helpOn = (v===undefined) ? !helpOn : v;
@@ -774,7 +833,7 @@ function help(){
     ['c','correct the transcript'],['a','join with previous'],['s','split this turn'],
     ['x','unclear'],['u','undo'],
     ['/  ·  ?','next / prev unreviewed'],['-  ·  =','volume down / up (to 300%)'],[',  ·  .','text smaller / larger'],
-    ['click a word','play from there and arm a split'],['h','hide this bar']];
+    ['click a word','play from there and arm a split'],['click the waveform','seek within the turn'],['h','hide this bar']];
   const split=[['← / →  ·  d / f','move the cut point'],['enter  ·  s','split here'],
     ['click a word','move the cut there and play'],['j / k','cancel and move on'],
     ['esc  ·  ← past start','cancel'],['u','undo']];

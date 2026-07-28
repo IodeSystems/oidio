@@ -98,6 +98,9 @@ type Server struct {
 	segments []Segment
 	speakers map[string]string
 
+	// peaks is the amplitude envelope for the waveform strip, computed once.
+	peaks []byte
+
 	// words carry ABSOLUTE times from the recogniser, so they stay correct
 	// through any amount of splitting and rejoining — unlike a position within a
 	// segment, which stops meaning anything the moment the segment changes.
@@ -248,6 +251,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /audio", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, s.audioPath)
 	})
+	// Served separately from /api/data: it is a few hundred KB and the page is
+	// usable without it, so the transcript must not wait on it.
+	mux.HandleFunc("GET /api/peaks", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.peaks == nil {
+			p, err := Peaks(s.audioPath)
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			s.peaks = p
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(s.peaks)
+	})
 	mux.HandleFunc("GET /api/data", s.handleData)
 	mux.HandleFunc("POST /api/segments", s.handleSegments)
 	mux.HandleFunc("POST /api/speaker", s.handleSpeaker)
@@ -263,6 +282,7 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 		"original":  s.original,
 		"speakers":  s.speakers,
 		"words":     s.words,
+		"peakRate":  peaksPerSecond,
 		"truthPath": s.truthPath,
 	})
 }

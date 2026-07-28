@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -337,5 +338,45 @@ func TestMissingWordTimesIsNotAnError(t *testing.T) {
 	s, _ := fixture(t)
 	if len(s.words) != 0 {
 		t.Fatalf("expected no words, got %+v", s.words)
+	}
+}
+
+// The strip has to line up with the audio it describes, so the envelope length
+// must follow the duration at the declared rate. A drifting length would put
+// every bar — and the cut marker drawn on it — in the wrong place.
+func TestPeaksLengthTracksDuration(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	dir := t.TempDir()
+	wav := filepath.Join(dir, "tone.wav")
+	// 3 seconds: 1s tone, 1s silence, 1s tone — the shape the strip exists to show.
+	cmd := exec.Command("ffmpeg", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+		"-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono:d=1",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+		"-filter_complex", "[0][1][2]concat=n=3:v=0:a=1", wav)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("could not synthesise fixture: %v %s", err, out)
+	}
+	p, err := Peaks(wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 3 * peaksPerSecond
+	if len(p) < want-peaksPerSecond/2 || len(p) > want+peaksPerSecond/2 {
+		t.Fatalf("envelope is %d samples, want about %d for 3s at %d/s", len(p), want, peaksPerSecond)
+	}
+	// The silent second must read as silence, or the strip cannot be used to
+	// find the gap a speaker change sits in.
+	mid := p[peaksPerSecond+peaksPerSecond/4 : peaksPerSecond*2-peaksPerSecond/4]
+	for _, v := range mid {
+		if v > 8 {
+			t.Fatalf("silence measured as %d — the gap would be invisible", v)
+		}
+	}
+	// And the tone must not be, after the display scaling.
+	if p[peaksPerSecond/2] < 100 {
+		t.Fatalf("tone measured as %d — the strip would be flat", p[peaksPerSecond/2])
 	}
 }
