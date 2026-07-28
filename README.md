@@ -178,6 +178,32 @@ for any transcript but cannot know what a corpus is *for*; "before it goes into
 a declaration, a brief, or a deposition question" is right for a legal archive
 and wrong everywhere else.
 
+### `oidio verify score` — how far the machine was from the person
+
+```sh
+oidio verify score hearing.truth.json hearing.diarized.json
+```
+```
+REVIEW        30% confirmed · 70% affirmed · 0% unclear · 0% untouched
+WER           unmeasurable — no turn's text has been corrected
+
+STRICT  DER  55.8%   one cluster per speaker — over-splitting counts as error
+MERGED  DER  15.9%   each cluster to its best speaker — separation only
+cost of over-splitting: 39.9 points
+```
+
+**Two numbers, because one hides which failure produced it.** On three hearings
+from one corpus, strict DER came out at 55.8%, 55.0% and 27.9% — and the two
+that matched did so for opposite reasons. One separated its voices well and was
+wrecked by over-splitting; the other over-split less but failed to separate at
+all, with a single cluster holding 1125 seconds spread near-evenly across four
+people. As one figure those look identical and call for opposite fixes.
+
+Review coverage is reported as four shares rather than summed: `confirmed` is a
+per-turn ruling and `affirmed` a blanket acceptance of the rest, and a DER is
+only as trustworthy as the answer to *was **this** turn looked at*. Untouched
+audio is scored as if it were truth, and says so.
+
 ### `oidio speakers review` — post-hoc correction
 
 ```sh

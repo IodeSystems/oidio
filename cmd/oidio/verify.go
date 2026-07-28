@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -24,6 +25,48 @@ import (
 // drift already happened once when the two lived in different languages: a field
 // was added here and the reader kept reporting the old numbers, quietly
 // understating how much had been reviewed.
+// verifyScore is `oidio verify score` — how far the machine was from the person.
+//
+// In the binary rather than a script because it reads the truth file's schema,
+// and a reader that keeps its own copy of what `confirmed` and `affirmed` mean
+// goes stale silently. That is not hypothetical: a field was added to the
+// workbench and the external scorer kept reporting the old coverage for days,
+// understating how much had been reviewed.
+func verifyScore(args []string) {
+	fs := flag.NewFlagSet("verify score", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "emit the result as JSON")
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `usage: oidio verify score TRUTH.json HYPOTHESIS.json
+
+Scores a diarization result against what a person actually heard.
+
+Two numbers, because one hides which failure produced it. STRICT is the DER
+convention — one cluster per speaker, so over-splitting counts as error. MERGED
+assigns each cluster to whichever speaker it overlaps most, ignoring
+over-splitting, and asks only whether the voices were SEPARATED. The gap between
+them is what over-splitting costs.
+
+`)
+		fs.PrintDefaults()
+	}
+	_ = fs.Parse(args)
+	if fs.NArg() != 2 {
+		fs.Usage()
+		os.Exit(2)
+	}
+	res, mapping, err := verify.Score(fs.Arg(0), fs.Arg(1))
+	if err != nil {
+		fatal("%v", err)
+	}
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(res)
+		return
+	}
+	verify.Report(os.Stdout, res, mapping)
+}
+
 func verifyRender(args []string) {
 	fs := flag.NewFlagSet("verify render", flag.ExitOnError)
 	title := fs.String("title", "", "document title (default: derived from the filename)")

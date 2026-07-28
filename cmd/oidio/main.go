@@ -29,6 +29,10 @@ func main() {
 			verifyRender(os.Args[3:])
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "score" {
+			verifyScore(os.Args[3:])
+			return
+		}
 		verifyCmd(os.Args[2:])
 		return
 	}
