@@ -380,3 +380,84 @@ func TestPeaksLengthTracksDuration(t *testing.T) {
 		t.Fatalf("tone measured as %d — the strip would be flat", p[peaksPerSecond/2])
 	}
 }
+
+// A blanket affirmation must never masquerade as individual review. `Confirmed`
+// exists so an untouched turn and a turn a person ruled on stay distinguishable;
+// a sweep that wrote `Confirmed` would erase that answer for every turn it
+// touched, which is the failure the field was introduced to prevent.
+func TestAffirmRestDoesNotForgeIndividualConfirmation(t *testing.T) {
+	s, truthPath := fixture(t)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	// One turn genuinely ruled on; the other left untouched.
+	post(t, srv.URL+"/api/segments", `{"segments":[
+		{"id":0,"start":0,"end":2,"speaker":"aaa","text":"it is","confirmed":true},
+		{"id":1,"start":2,"end":4,"speaker":"bbb","text":"is that right"}]}`)
+
+	post(t, srv.URL+"/api/affirm-rest", `{"by":"Carl"}`)
+
+	tf := readTruth(t, truthPath)
+	if len(tf.Segments) != 2 {
+		t.Fatalf("segments lost: %d", len(tf.Segments))
+	}
+	if !tf.Segments[0].Confirmed || tf.Segments[0].Affirmed {
+		t.Error("a turn already ruled on must stay Confirmed and must not be re-marked Affirmed")
+	}
+	if tf.Segments[1].Confirmed {
+		t.Error("the sweep forged individual confirmation — the distinction is the whole point")
+	}
+	if !tf.Segments[1].Affirmed {
+		t.Error("the untouched turn should be Affirmed")
+	}
+	if tf.AffirmedBy != "Carl" || tf.AffirmedAt == "" {
+		t.Errorf("the affirmation must record who and when: by=%q at=%q", tf.AffirmedBy, tf.AffirmedAt)
+	}
+}
+
+// Unclear is a real answer — audible but not attributable. A blanket "the rest is
+// right" is not a claim about turns nobody could attribute, so it must leave them
+// alone rather than quietly resolving them.
+func TestAffirmRestLeavesUnclearAlone(t *testing.T) {
+	s, truthPath := fixture(t)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	post(t, srv.URL+"/api/segments", `{"segments":[
+		{"id":0,"start":0,"end":2,"speaker":"aaa","text":"it is","unclear":true},
+		{"id":1,"start":2,"end":4,"speaker":"bbb","text":"is that right"}]}`)
+	post(t, srv.URL+"/api/affirm-rest", `{"by":"Carl"}`)
+
+	tf := readTruth(t, truthPath)
+	if !tf.Segments[0].Unclear || tf.Segments[0].Affirmed || tf.Segments[0].Confirmed {
+		t.Error("an unclear turn must survive the sweep untouched")
+	}
+	if !tf.Segments[1].Affirmed {
+		t.Error("the untouched turn should still be affirmed")
+	}
+}
+
+// The affirmation is reversible, because it is a judgement and judgements get
+// revisited. Undo must clear the file-level record too, or the transcript keeps
+// claiming a completeness it no longer has.
+func TestAffirmRestIsReversible(t *testing.T) {
+	s, truthPath := fixture(t)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	post(t, srv.URL+"/api/affirm-rest", `{"by":"Carl"}`)
+	if tf := readTruth(t, truthPath); tf.AffirmedBy == "" {
+		t.Fatal("setup: affirmation did not take")
+	}
+	post(t, srv.URL+"/api/affirm-rest", `{"undo":true}`)
+
+	tf := readTruth(t, truthPath)
+	for i, sg := range tf.Segments {
+		if sg.Affirmed {
+			t.Errorf("segment %d still affirmed after undo", i)
+		}
+	}
+	if tf.AffirmedBy != "" || tf.AffirmedAt != "" {
+		t.Errorf("the file-level record must be cleared too: by=%q at=%q", tf.AffirmedBy, tf.AffirmedAt)
+	}
+}

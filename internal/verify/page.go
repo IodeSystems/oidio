@@ -42,6 +42,9 @@ main{padding:10px 16px 180px;transition:padding-bottom .15s}
 .seg:hover{background:rgba(127,127,127,.07)}
 .seg.cur{background:rgba(76,141,255,.13);border-left-color:var(--accent)}
 .seg.done{border-left-color:var(--ok)}
+/* Affirmed in bulk: accepted, but not individually ruled on. Dashed so the
+   distinction is visible at a glance while scanning the column. */
+.seg.affirmed{border-left-color:var(--ok);border-left-style:dashed}
 .seg.unclear{border-left-color:var(--warn)}
 .seg.cont .spk{color:var(--dim)}
 .t{color:var(--dim);font-variant-numeric:tabular-nums;font-size:.82rem}
@@ -82,6 +85,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:1px 6px;font:12px ui-
     <span class="pill" id="count">0 / 0</span>
     <span class="pill" id="saved">saved</span>
     <span class="pill" id="undos">0 undo</span>
+    <button class="pill" id="affirm" onclick="affirmRest()" title="Accept the remaining turns as correctly attributed, without claiming each was ruled on individually">Affirm remaining</button>
     <label class="pill" style="display:flex;gap:6px;align-items:center">
       <span>text</span>
       <button id="tsdn" style="cursor:pointer;background:none;border:0;color:inherit;font:inherit">&minus;</button>
@@ -244,7 +248,9 @@ function render(){
     const prev=segs[i-1];
     const sameAsPrev=prev&&prev.speaker&&prev.speaker===s.speaker;
     const d=document.createElement('div');
-    d.className='seg'+(s.confirmed?' done':'')+(s.unclear?' unclear':'')+(sameAsPrev?' cont':'');
+    // An affirmed turn renders differently from a confirmed one on purpose: a reader scanning the
+    // column should be able to see which turns a person actually ruled on.
+    d.className='seg'+(s.confirmed?' done':'')+(s.affirmed&&!s.confirmed?' affirmed':'')+(s.unclear?' unclear':'')+(sameAsPrev?' cont':'');
     d.innerHTML='<div class=t>'+fmt(s.start)+'</div><div class="spk'+(s.moved?' moved':'')+'"></div><div class=txt></div>';
     d.children[1].innerHTML=(sameAsPrev?'⤷ ':'')+esc(labelOf(s.speaker))+
       '<i title="what the diarizer grouped this into">c'+clusterNo(s.cluster)+'</i>';
@@ -290,10 +296,36 @@ function markCur(){
 }
 function fmt(x){const m=Math.floor(x/60),s=Math.floor(x%60);return m+':'+String(s).padStart(2,'0')}
 function stats(){
-  const n=segs.filter(s=>s.confirmed||s.unclear).length;
-  document.getElementById('count').textContent=n+' / '+segs.length;
+  // Four states, reported separately. Collapsing them into one number is what
+  // made a pass impossible to read: "19 / 37" could not distinguish a half-done
+  // pass from a finished one that was mostly accepted in bulk.
+  const c=segs.filter(s=>s.confirmed&&!s.unclear).length;
+  const a=segs.filter(s=>s.affirmed&&!s.confirmed&&!s.unclear).length;
+  const u=segs.filter(s=>s.unclear).length;
+  const left=segs.length-c-a-u;
+  const n=c+a+u;
+  document.getElementById('count').textContent=
+    left? n+' / '+segs.length+'  ('+left+' untouched)' : 'complete — '+c+' ruled, '+a+' affirmed'+(u?', '+u+' unclear':'');
   document.getElementById('prog').style.width=(segs.length?100*n/segs.length:0)+'%';
   document.getElementById('undos').textContent=hist.length+' undo';
+  const b=document.getElementById('affirm');
+  if(b) b.textContent = left? 'Affirm remaining '+left : 'Undo affirmation';
+}
+
+// affirmRest is "I listened to the whole thing; the rest is right". It never
+// writes the confirmed flag — a turn accepted in bulk and a turn ruled on
+// individually must stay distinguishable, which is why that flag exists.
+async function affirmRest(){
+  const left=segs.filter(s=>!s.confirmed&&!s.affirmed&&!s.unclear).length;
+  const undo=left===0;
+  if(!undo && !confirm('Affirm the remaining '+left+' turn(s) as correctly attributed?\n\nThey will be marked AFFIRMED, not individually confirmed.')) return;
+  const by=undo?'':(localStorage.getItem('oidio.who')||prompt('Affirming as (name):')||'');
+  if(!undo&&by) localStorage.setItem('oidio.who',by);
+  const r=await fetch('/api/affirm-rest',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({by:by,undo:undo})});
+  if(!r.ok){alert('affirm failed: '+await r.text());return}
+  segs.forEach(s=>{ if(undo) s.affirmed=false; else if(!s.confirmed&&!s.unclear) s.affirmed=true });
+  render(); stats();
 }
 
 // The editor shows the turn as words with a caret BETWEEN them, because a split

@@ -63,6 +63,21 @@ type Segment struct {
 	// expected to be right.
 	Unclear bool `json:"unclear,omitempty"`
 
+	// Affirmed marks a turn accepted by a blanket "the rest is right" rather than
+	// ruled on individually. It is deliberately NOT Confirmed.
+	//
+	// Listening to a recording end to end and accepting the remaining attribution
+	// is a real and normal act, and before this there was no way to record it: the
+	// choice was to leave the pass looking half-finished, or to tick every turn
+	// and destroy the distinction Confirmed exists to preserve. Reusing Confirmed
+	// for the sweep would make an untouched turn and a judged turn identical
+	// again, which is the exact failure that field was introduced to prevent.
+	//
+	// A reader can therefore still ask the question that matters — *was this
+	// particular turn looked at* — and get an honest answer, while a completed
+	// pass reports as complete.
+	Affirmed bool `json:"affirmed,omitempty"`
+
 	// Corrected marks text a person actually retyped, as opposed to text the
 	// recogniser produced and nobody disputed. Only these are ground truth for
 	// word error rate — scoring WER against un-reviewed output would measure the
@@ -84,6 +99,14 @@ type TruthFile struct {
 	Updated  string            `json:"updated"`
 	Segments []Segment         `json:"segments"`
 	Speakers map[string]string `json:"speakers,omitempty"`
+
+	// AffirmedBy and AffirmedAt record a blanket affirmation at the file level, so
+	// a downstream reader can tell that the sweep happened, who made it, and when
+	// — without reconstructing it by counting per-segment flags. Anything derived
+	// from this transcript can then state its provenance accurately instead of
+	// describing a partially-verified file as verified.
+	AffirmedBy string `json:"affirmed_by,omitempty"`
+	AffirmedAt string `json:"affirmed_at,omitempty"`
 }
 
 type Server struct {
@@ -93,6 +116,10 @@ type Server struct {
 	transPath string
 	speakPath string
 	truthPath string
+
+	// affirmedBy/affirmedAt carry the file-level blanket affirmation across saves.
+	affirmedBy string
+	affirmedAt string
 
 	original []Segment
 	segments []Segment
@@ -184,6 +211,7 @@ func (s *Server) loadTruth() {
 		return
 	}
 	s.segments = tf.Segments
+	s.affirmedBy, s.affirmedAt = tf.AffirmedBy, tf.AffirmedAt
 	for k, v := range tf.Speakers {
 		if _, ok := s.speakers[k]; !ok {
 			s.speakers[k] = v
@@ -270,6 +298,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/data", s.handleData)
 	mux.HandleFunc("POST /api/segments", s.handleSegments)
 	mux.HandleFunc("POST /api/speaker", s.handleSpeaker)
+	mux.HandleFunc("POST /api/affirm-rest", s.handleAffirmRest)
 	return mux
 }
 
@@ -323,6 +352,82 @@ func (s *Server) handleSegments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "confirmed": done, "total": n})
 }
 
+// handleAffirmRest records "I listened to the whole thing; the rest is right".
+//
+// It marks every un-ruled turn Affirmed, never Confirmed. The distinction is the
+// feature: Confirmed answers "did a person rule on THIS turn", and a sweep that
+// wrote Confirmed would erase that answer for every turn it touched. Turns
+// already Confirmed or marked Unclear are left exactly as they are — a blanket
+// affirmation is a floor, not an overwrite.
+func (s *Server) handleAffirmRest(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		By   string `json:"by"`
+		Undo bool   `json:"undo"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+
+	s.mu.Lock()
+	var touched int
+	if in.Undo {
+		for i := range s.segments {
+			if s.segments[i].Affirmed {
+				s.segments[i].Affirmed = false
+				touched++
+			}
+		}
+		s.affirmedBy, s.affirmedAt = "", ""
+	} else {
+		for i := range s.segments {
+			sg := &s.segments[i]
+			if sg.Confirmed || sg.Unclear || sg.Affirmed {
+				continue
+			}
+			sg.Affirmed = true
+			touched++
+		}
+		if in.By == "" {
+			in.By = "unattributed"
+		}
+		s.affirmedBy, s.affirmedAt = in.By, time.Now().Format(time.RFC3339)
+	}
+	err := s.saveTruthLocked()
+	st := s.statsLocked()
+	s.mu.Unlock()
+
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	st["ok"] = true
+	st["touched"] = touched
+	writeJSON(w, st)
+}
+
+// statsLocked reports the four states separately. Collapsing them into one
+// percentage is what made the pass hard to read in the first place.
+func (s *Server) statsLocked() map[string]any {
+	var confirmed, affirmed, unclear int
+	for _, sg := range s.segments {
+		switch {
+		case sg.Unclear:
+			unclear++
+		case sg.Confirmed:
+			confirmed++
+		case sg.Affirmed:
+			affirmed++
+		}
+	}
+	return map[string]any{
+		"total":     len(s.segments),
+		"confirmed": confirmed,
+		"affirmed":  affirmed,
+		"unclear":   unclear,
+		"untouched": len(s.segments) - confirmed - affirmed - unclear,
+		"affirmedBy": s.affirmedBy,
+		"affirmedAt": s.affirmedAt,
+	}
+}
+
 func (s *Server) handleSpeaker(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		UUID   string `json:"uuid"`
@@ -359,10 +464,12 @@ func (s *Server) handleSpeaker(w http.ResponseWriter, r *http.Request) {
 // stops it being done at all.
 func (s *Server) saveTruthLocked() error {
 	tf := TruthFile{
-		Source:   filepath.Base(s.transPath),
-		Updated:  time.Now().Format(time.RFC3339),
-		Segments: s.segments,
-		Speakers: s.speakers,
+		Source:     filepath.Base(s.transPath),
+		Updated:    time.Now().Format(time.RFC3339),
+		Segments:   s.segments,
+		Speakers:   s.speakers,
+		AffirmedBy: s.affirmedBy,
+		AffirmedAt: s.affirmedAt,
 	}
 	b, err := json.MarshalIndent(tf, "", "  ")
 	if err != nil {
