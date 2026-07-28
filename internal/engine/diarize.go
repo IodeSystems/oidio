@@ -267,7 +267,13 @@ func (d *Diarizer) Process(samples []float32, opts DiarOpts) DiarResult {
 	if len(words) > 0 {
 		assignSpeakers(words, spans)
 		smoothRuns(words)
-		segs = segmentsFromWords(words)
+		speechEnd := duration
+		if len(spans) > 0 {
+			if e := spans[len(spans)-1].end; e < speechEnd {
+				speechEnd = e
+			}
+		}
+		segs = segmentsFromWords(words, speechEnd)
 	} else {
 		// The recogniser emitted no timestamps (sherpa's Whisper decoder does not),
 		// so a word cannot be placed on the clock and the span is the only unit
@@ -421,7 +427,15 @@ func smoothRuns(words []TimedWord) {
 // segmentsFromWords groups consecutive words into one segment per speaker RUN. A
 // segment now ends where the speaker changes, which is what a turn is — the
 // diarizer's own span boundaries were about silence, not about who is talking.
-func segmentsFromWords(words []TimedWord) []DiarSegment {
+// speechEnd is where the SEGMENTER says speech stops. Every segment but the
+// last is closed by the next word's start, so only the final one needs it —
+// without it a turn ends at its last word's START and that word's duration is
+// dropped from the transcript entirely.
+//
+// The diarizer's own last span is the right bound rather than the file
+// duration: trailing silence is not speech, and claiming it would be a false
+// alarm against ground truth.
+func segmentsFromWords(words []TimedWord, speechEnd float64) []DiarSegment {
 	var out []DiarSegment
 	for _, w := range words {
 		if n := len(out); n > 0 && out[n-1].Speaker == w.Speaker {
@@ -433,6 +447,9 @@ func segmentsFromWords(words []TimedWord) []DiarSegment {
 			out[n-1].End = w.Start
 		}
 		out = append(out, DiarSegment{Start: w.Start, End: w.Start, Speaker: w.Speaker, Text: w.Text})
+	}
+	if n := len(out); n > 0 && speechEnd > out[n-1].End {
+		out[n-1].End = speechEnd
 	}
 	return out
 }

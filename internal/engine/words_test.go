@@ -103,3 +103,46 @@ func TestWordsFromTokensDropsBeforeFrom(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// Every segment but the last is closed by the next word's start. The last has no
+// next word, so without an explicit end it stops at its final word's START and
+// that word's duration vanishes from the transcript.
+func TestFinalSegmentDoesNotDropItsLastWord(t *testing.T) {
+	w := []TimedWord{
+		{Text: "one", Start: 1, Speaker: 0},
+		{Text: "two", Start: 2, Speaker: 0},
+		{Text: "three", Start: 3, Speaker: 0},
+	}
+	segs := segmentsFromWords(w, 4.5)
+	if len(segs) != 1 {
+		t.Fatalf("want 1 segment, got %d", len(segs))
+	}
+	if segs[0].End != 4.5 {
+		t.Fatalf("final segment ends at %.2f, want 4.50 — the last word was dropped", segs[0].End)
+	}
+}
+
+// Trailing silence is not speech. Claiming it would score as a false alarm, so
+// an end BEFORE the last word is ignored rather than shortening the turn.
+func TestFinalSegmentIgnoresAnEndBeforeItsLastWord(t *testing.T) {
+	w := []TimedWord{{Text: "one", Start: 1, Speaker: 0}, {Text: "two", Start: 9, Speaker: 0}}
+	segs := segmentsFromWords(w, 5)
+	if segs[0].End != 9 {
+		t.Fatalf("segment end %.2f must not precede its own last word", segs[0].End)
+	}
+}
+
+// Interior boundaries stay contiguous — a gap there would read as silence the
+// diarizer never claimed.
+func TestSegmentsRemainContiguous(t *testing.T) {
+	w := []TimedWord{
+		{Text: "a", Start: 0, Speaker: 0}, {Text: "b", Start: 1, Speaker: 0},
+		{Text: "c", Start: 2, Speaker: 1}, {Text: "d", Start: 3, Speaker: 0},
+	}
+	segs := segmentsFromWords(w, 4)
+	for i := 1; i < len(segs); i++ {
+		if segs[i-1].End != segs[i].Start {
+			t.Fatalf("gap between segment %d and %d: %.2f vs %.2f", i-1, i, segs[i-1].End, segs[i].Start)
+		}
+	}
+}
