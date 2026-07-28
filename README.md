@@ -137,7 +137,7 @@ correct the text, undo.
 **Clusters are the machine's guess; people are yours.** Every turn carries an
 immutable `cluster` and a mutable `speaker`. Keeping the machine's grouping is
 what makes the common repair expressible: *"the diarizer split one person in
-two, and everything it called c3 is Delano"* needs that grouping to survive the
+two, and everything it called c3 is one person"* needs that grouping to survive the
 first correction.
 
 Three flags in the output mean different things, and the difference matters when

@@ -646,7 +646,7 @@ function assign(u){
 // assignCluster reattributes every turn the MACHINE grouped together.
 //
 // The common repair is not "this turn is wrong" but "the diarizer split one
-// person into two, and everything it called cluster 3 is actually Delano".
+// person into two, and everything it called cluster 3 is actually one person".
 // Doing that a turn at a time is the tedium that makes a pass unfinishable, and
 // it is only expressible because the machine's grouping is kept after the first
 // turn is corrected.

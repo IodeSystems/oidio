@@ -26,7 +26,7 @@ func fixture(t *testing.T) (*Server, string) {
 	if err := os.WriteFile(audio, []byte("not really audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(speak, []byte(`{"aaa":"Becky"}`), 0o644); err != nil {
+	if err := os.WriteFile(speak, []byte(`{"aaa":"Alice"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s, err := New(audio, trans, speak, truth)
@@ -252,13 +252,13 @@ func TestMergedSpeakerLeavesTheCatalogClean(t *testing.T) {
 		{"id":0,"start":0,"end":2,"speaker":"aaa","text":"it is","confirmed":true},
 		{"id":1,"start":2,"end":4,"speaker":"aaa","text":"is that right","confirmed":true}]}`)
 	post(t, srv.URL+"/api/speaker", `{"uuid":"bbb","remove":true}`)
-	post(t, srv.URL+"/api/speaker", `{"uuid":"aaa","label":"Becky"}`)
+	post(t, srv.URL+"/api/speaker", `{"uuid":"aaa","label":"Alice"}`)
 
 	tf := readTruth(t, truthPath)
 	if _, gone := tf.Speakers["bbb"]; gone {
 		t.Fatalf("absorbed id still in the catalog: %+v", tf.Speakers)
 	}
-	if tf.Speakers["aaa"] != "Becky" {
+	if tf.Speakers["aaa"] != "Alice" {
 		t.Fatalf("surviving id mislabelled: %+v", tf.Speakers)
 	}
 	for _, sg := range tf.Segments {
