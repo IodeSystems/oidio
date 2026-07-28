@@ -103,6 +103,82 @@ Mapping a UUID to a real person ("that's Carl") is the **API consumer's** job, i
 their own system. oidio only emits voiceprints, UUIDs, and similarities. See
 [`docs/PLAN.md`](docs/PLAN.md) for the full shape.
 
+## Tools
+
+Two subcommands that are not part of the server. They exist because a
+diarization result is a *hypothesis*, and a hypothesis nobody has checked cannot
+be scored, corrected, or trusted.
+
+### `oidio verify` — ground-truth workbench
+
+```sh
+oidio verify --listen 0.0.0.0 --audio hearing.m4a --transcription hearing.json \
+             --speakers speakers.json --truth hearing.truth.json
+# oidio verify → http://0.0.0.0:41475
+```
+
+Serves a keyboard-driven page for correcting **who spoke each turn**. It is an
+editor, not a survey: attribution alone cannot express the common failure, a
+diarization boundary landing mid-sentence and leaving one speaker's last word in
+the next speaker's turn. So it owns segments — join, split at a word boundary,
+correct the text, undo.
+
+| | |
+|---|---|
+| `space` `r` · `j` `k` | play / replay · next / prev turn |
+| `enter` | pick speaker (`enter` again = confirm as-is) |
+| `shift+enter` | pick for **every turn of this cluster** |
+| `1`–`9` · `↑` `↓` | assign speaker |
+| `a` · `s` | join with previous · split |
+| `c` · `x` · `u` | correct the text · unclear · undo |
+| `/` · `?` | next / prev unreviewed |
+| `-` `=` · `,` `.` · `h` | volume (to 300%) · text size · hide the key bar |
+
+**Clusters are the machine's guess; people are yours.** Every turn carries an
+immutable `cluster` and a mutable `speaker`. Keeping the machine's grouping is
+what makes the common repair expressible: *"the diarizer split one person in
+two, and everything it called c3 is Delano"* needs that grouping to survive the
+first correction.
+
+Three flags in the output mean different things, and the difference matters when
+scoring:
+
+- `confirmed` — a person ruled on this turn. Absent means untouched, and an
+  untouched turn is **not evidence**.
+- `unclear` — audible but not attributable. A real answer: it marks turns where
+  no method should be expected to be right.
+- `corrected` — the text was retyped. **Only these are ground truth for word
+  error rate.** Scoring WER across everything would compare the recogniser to
+  its own output and report a flawless zero.
+
+Saved on every keystroke via atomic rename; `--raw` disables playback level
+correction, `--port` pins the port so a restart does not orphan an open tab.
+
+### `oidio speakers review` — post-hoc correction
+
+```sh
+oidio speakers review --audio hearing.m4a hearing.json \
+                      --llm http://localhost:8111/v1 --llm-model qwen
+```
+
+Proposes corrections without re-running diarization: **MOVE** a passage filed
+under the wrong voice, **JOIN** one person split across ids, **SPLIT** a turn
+that holds two speakers. With `--llm`, a second opinion is drawn from *what was
+said* — independent of how it sounded — and the two signals are reported
+separately, never blended. Where they disagree is the most informative thing the
+review produces. Nothing is written without `--apply` or `--apply-agreed`.
+
+### Prior art
+
+[Gecko](https://github.com/gong-io/gecko) (Gong.io, Interspeech 2019) covers
+much of the same ground and adds a waveform view and multi-model comparison.
+[voxmap-studio](https://arxiv.org/abs/2606.26842) is pyannote-integrated and
+gates export on per-segment confirmation. Both are worth looking at before
+adopting these. What is different here is that the tools are subcommands of the
+server that produced the output, so there is no export/import round trip and the
+truth file is the same schema as the API response — which is what makes scoring
+a hypothesis against it a one-liner.
+
 ## With corrallm
 
 oidio is a plain OpenAI backend; [corrallm](https://github.com/IodeSystems/CorraLLM)
