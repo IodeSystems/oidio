@@ -25,6 +25,10 @@ func main() {
 		os.Exit(2)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verify" {
+		if len(os.Args) > 2 && os.Args[2] == "render" {
+			verifyRender(os.Args[3:])
+			return
+		}
 		verifyCmd(os.Args[2:])
 		return
 	}

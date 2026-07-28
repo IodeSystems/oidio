@@ -154,6 +154,30 @@ scoring:
 Saved on every keystroke via atomic rename; `--raw` disables playback level
 correction, `--port` pins the port so a restart does not orphan an open tab.
 
+### `oidio verify render` — the truth file as prose
+
+```sh
+oidio verify render hearing.truth.json          # writes hearing.verified.md
+oidio verify render --note "…" *.truth.json     # a line your corpus needs said
+```
+
+The header is **generated, never written**. A hand-written one says whatever
+someone believed when they wrote it, and drifts the moment the file changes — on
+the corpus this was built against, that produced a header claiming a
+completeness the data did not carry.
+
+It matters because a transcript is a source document downstream, and facts get
+extracted from it and cited. A file that is 18-of-39 confirmed, presented as
+"the verified transcript", launders an unchecked machine guess into the record
+one step removed. So the banner states exactly how much was ruled on, and
+attribution and WORDING are reported as separate axes — checking who spoke says
+nothing about whether the words are right.
+
+`--note` appends a line the domain supplies. oidio ships a warning strong enough
+for any transcript but cannot know what a corpus is *for*; "before it goes into
+a declaration, a brief, or a deposition question" is right for a legal archive
+and wrong everywhere else.
+
 ### `oidio speakers review` — post-hoc correction
 
 ```sh

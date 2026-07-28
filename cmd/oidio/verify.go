@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/iodesystems/oidio/internal/verify"
 )
@@ -15,6 +16,58 @@ import (
 // acoustic and semantic reviewers: both produced confident, mutually
 // contradictory proposals on the same hearing, and without labels there is no
 // way to score either. This produces those labels.
+// verifyRender is `oidio verify render` — the truth file as prose.
+//
+// Lives with verify rather than as a separate tool because it reads the same
+// file the workbench writes, and a renderer that has its own idea of what
+// `confirmed` or `affirmed` mean will drift from the thing producing them. That
+// drift already happened once when the two lived in different languages: a field
+// was added here and the reader kept reporting the old numbers, quietly
+// understating how much had been reviewed.
+func verifyRender(args []string) {
+	fs := flag.NewFlagSet("verify render", flag.ExitOnError)
+	title := fs.String("title", "", "document title (default: derived from the filename)")
+	source := fs.String("source", "", "recording to name as the source (default: the truth file's own)")
+	out := fs.String("o", "", "output path (default: alongside, .verified.md)")
+	note := fs.String("note", "", "extra header line — what this corpus needs said before anyone quotes it")
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `usage: oidio verify render TRUTH.json [TRUTH.json...]
+
+Writes <stem>.verified.md from <stem>.truth.json, reading <stem>.speakers.json
+for names when present.
+
+The header is generated, never written: it states how much of the file a person
+actually ruled on, so a partly-reviewed transcript cannot be cited as a verified
+one.
+
+`)
+		fs.PrintDefaults()
+	}
+	_ = fs.Parse(args)
+	if fs.NArg() == 0 {
+		fs.Usage()
+		os.Exit(2)
+	}
+	for _, p := range fs.Args() {
+		if !strings.HasSuffix(p, ".truth.json") {
+			fmt.Fprintf(os.Stderr, "skip (not a .truth.json): %s\n", p)
+			continue
+		}
+		md, err := verify.Render(p, *title, *source, *note)
+		if err != nil {
+			fatal("%v", err)
+		}
+		dst := *out
+		if dst == "" || fs.NArg() > 1 {
+			dst = strings.TrimSuffix(p, ".truth.json") + ".verified.md"
+		}
+		if err := os.WriteFile(dst, []byte(md), 0o644); err != nil {
+			fatal("write %s: %v", dst, err)
+		}
+		fmt.Printf("wrote %s\n", dst)
+	}
+}
+
 func verifyCmd(args []string) {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1", "host to bind (the port is chosen and printed)")
