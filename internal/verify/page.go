@@ -54,7 +54,11 @@ main{padding:10px 16px 180px;transition:padding-bottom .15s}
 .txt{white-space:pre-wrap;font-size:1.02rem;line-height:1.6}
 .txt w{cursor:pointer;border-radius:3px}
 .txt.splitting{line-height:2.1}
-.wave{display:block;width:100%;height:34px;margin:4px 0 2px;cursor:pointer;border-radius:3px;background:rgba(127,127,127,.07)}
+.wave{display:block;width:100%;height:34px;margin:0;cursor:pointer;border-radius:3px;background:rgba(127,127,127,.07)}
+.wavewrap{position:relative;margin:4px 0 2px}
+/* The playhead rides above the strip. Moving one element beats redrawing the
+   canvas, which costs a per-pixel scan of the envelope. */
+.playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--accent,#4c8dff);pointer-events:none;box-shadow:0 0 4px var(--accent,#4c8dff)}
 .txt .gap{display:inline-block;width:3px;height:1.1em;vertical-align:-.2em;margin:0 2px;border-radius:2px}
 .txt .gap.on{background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .txt w:hover{background:rgba(76,141,255,.25)}
@@ -284,7 +288,8 @@ function render(){
       else play();
     };
     L.appendChild(d);
-    if(i===cur&&PEAKS) L.appendChild(waveFor(s));
+    // The strip is attached by placeWave() after the rows exist, so that focus()
+    // and render() go through the same path and cannot disagree.
     if(i===cur&&mode==='text') L.appendChild(textEditor(s));
     if(i===cur&&mode==='pick') L.appendChild(pickerBox());
   });
@@ -292,8 +297,53 @@ function render(){
 }
 function markCur(){
   [...L.querySelectorAll('.seg')].forEach((c,i)=>c.classList.toggle('cur',i===cur));
+  placeWave();
   roster();
 }
+
+// placeWave moves the amplitude strip to whichever turn is current.
+//
+// It used to be appended inside render() only, and focus() does not re-render —
+// it marks and scrolls. So moving between turns left the strip attached to the
+// turn you came FROM. The three symptoms that produces are all the same bug: the
+// strip does not follow, the playhead sits in a region unrelated to what is
+// playing, and the whole thing reads as "lagging" because it is literally
+// displaying an earlier part of the recording.
+function placeWave(){
+  if(!PEAKS) return;
+  const rows=L.querySelectorAll('.seg');
+  const row=rows[cur];
+  if(!row) return;
+  const existing=L.querySelector('.wavewrap');
+  if(existing&&existing.dataset.seg==String(cur)) return; // already in the right place
+  if(existing) existing.remove();
+  const s=segs[cur]; if(!s) return;
+  const wrap=document.createElement('div');
+  wrap.className='wavewrap'; wrap.dataset.seg=String(cur);
+  wrap.appendChild(waveFor(s));
+  const ph=document.createElement('div');
+  ph.className='playhead'; ph.style.display='none';
+  wrap.appendChild(ph);
+  row.after(wrap);
+}
+
+// The playhead is a positioned element, not a canvas redraw. The strip costs a
+// per-pixel scan over the envelope to draw; repeating that every animation frame
+// is what would actually make this slow. Moving one element does not touch the
+// canvas at all.
+let phRAF=null;
+function tickPlayhead(){
+  const wrap=L.querySelector('.wavewrap');
+  const ph=wrap&&wrap.querySelector('.playhead');
+  const s=segs[cur];
+  if(!ph||!s){ phRAF=null; return }
+  const span=(s.end-s.start)||1;
+  const f=(A.currentTime-s.start)/span;
+  if(f<0||f>1){ ph.style.display='none' }
+  else { ph.style.display='block'; ph.style.left=(f*100)+'%' }
+  phRAF = A.paused ? null : requestAnimationFrame(tickPlayhead);
+}
+function startPlayhead(){ if(phRAF===null) phRAF=requestAnimationFrame(tickPlayhead) }
 function fmt(x){const m=Math.floor(x/60),s=Math.floor(x%60);return m+':'+String(s).padStart(2,'0')}
 function stats(){
   // Four states, reported separately. Collapsing them into one number is what
@@ -620,6 +670,8 @@ function resume(){
   }
   play();
 }
+A.addEventListener('play',startPlayhead);
+A.addEventListener('seeked',()=>{ tickPlayhead() });
 A.addEventListener('timeupdate',()=>{
   if(stopAt!==null&&A.currentTime>=stopAt){A.pause();stopAt=null}
   follow();
