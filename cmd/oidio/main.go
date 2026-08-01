@@ -38,6 +38,16 @@ func main() {
 		verifyCmd(os.Args[2:])
 		return
 	}
+	// `oidio attest` is gone. Reviewing a machine reading — confirming it,
+	// correcting it, holding the verdicts — moved to raglit, which does that job
+	// for audio, text and scanned pages together and stores the rulings in one
+	// place. oidio stays in the machine best-effort game: it transcribes and
+	// diarizes and emits its reading, and does not hold anybody's corrections.
+	if len(os.Args) > 1 && os.Args[1] == "attest" {
+		fmt.Fprintln(os.Stderr, "oidio attest has moved to raglit: `raglit attest <recording>`,")
+		fmt.Fprintln(os.Stderr, "or the daemon's workbench at /attest/<index>.")
+		os.Exit(2)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
 		os.Args = append(os.Args[:1], os.Args[2:]...)
 	}

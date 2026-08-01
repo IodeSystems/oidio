@@ -133,6 +133,67 @@ Implementation: `SpeakerEmbeddingExtractor` per speaker/segment + cosine
 similarity computed directly (no `SpeakerEmbeddingManager` persistent store);
 `google/uuid` for IDs.
 
+- ✅ **S? — `oidio attest`: the verify workbench, moved into the shared framework.**
+  `internal/attestaudio` + `cmd/oidio/attest.go`. Turns a diarize result into an
+  `attest` reading and serves the shared review UI over it. The framework lives
+  in `github.com/iodesystems/attest` (local `replace`), where raglit and kgraph
+  use the same one — see that repo's `plan/plan.md` for why three repos had grown
+  three halves of it.
+
+  What this has that `verify` does not:
+  - **The audio a reviewer hears is identified.** Each turn carries the sha256 of
+    its DECODED samples (16 kHz mono s16le, pinned), so the page can say whether
+    what is playing is what the recogniser was given. The levelled rendering is
+    served separately and labelled as not-the-artifact. `verify` plays a
+    level-corrected copy and records no such distinction, so a verdict made
+    against it cannot say which audio it rests on.
+  - **A verdict says who made it and under whose authority** — an attorney can
+    hand a paralegal the link and the record shows both.
+  - **The same page reviews a scanned exhibit**, because raglit emits the same
+    format.
+
+  - **next**: use it on a real hearing. Until then `oidio verify` is untouched
+    and remains the working workbench.
+  - **risk**: sealing decodes each turn separately (`-ss`/`-to` after `-i`, for
+    sample-accurate seek), so a transcript with thousands of turns is slow to
+    seal. The fix is a single streaming pass that hashes windows as samples go
+    by; not built because nothing has hit it.
+- ✅ **`oidio attest import` — carrying a verify pass across.**
+  `internal/attestaudio/importtruth.go`.
+
+  **Settled:** a verify `confirmed` IS replayed as an attest `confirmed`. The
+  alternative is why — downgrading to `affirmed` would make a turn somebody sat
+  and judged indistinguishable from one they swept past, which is precisely the
+  failure `affirmed` exists to prevent, and refusing to import throws the pass
+  away. So the ruling crosses intact and the CONTEXT crosses with it:
+  `--reviewed-by` is required (verify recorded no author, and inventing one
+  produces something that reads like a real signature), and every entry carries
+  `auth: import:oidio-verify`, which the review page shows — so an imported
+  ruling never looks like one made in front of the page.
+
+  The substantial part is that verify is an EDITOR. A truth file's turns
+  routinely are not the machine's turns, so joins and splits become
+  **resegments**, partitioned by shared boundary: a time both segmentations
+  agree is a turn edge. One act of re-cutting inside one span is one resegment,
+  because the log must describe edits that were actually performed.
+
+  What it deliberately will not do:
+  - A re-cut turn carries **no evidence digest** — nothing read it — so the page
+    says "no recorded artifact, this unit was cut by a person".
+  - Retyping on a re-cut turn is **kept but not scorable**: there is no machine
+    reading of that exact span to score against, and counting it would measure
+    the recogniser against itself.
+  - A sweep is replayed **per unit, not as a blanket**. attest's blanket is
+    positional and would affirm turns created after the sweep, putting a ruling
+    in someone's mouth.
+  - Segments outside the recording are **refused and reported**, not imported as
+    one enormous resegment superseding nothing.
+
+  - **next**: run it on the real corpus, then cut `verify` down to a shim.
+  - **risk**: idempotent by convergence, not by detection — importing twice
+    appends the pass twice and the later entries win, so the state is identical
+    but the log says it happened twice, because it did.
+
 ## Conventions
 
 - Standard OpenAI shapes first; extensions additive (`speaker` on segments, the
