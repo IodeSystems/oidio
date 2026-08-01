@@ -4,12 +4,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/iodesystems/oidio/internal/config"
+	"github.com/iodesystems/oidio/internal/hf"
 	"github.com/iodesystems/oidio/internal/server"
 )
 
@@ -43,13 +45,29 @@ func main() {
 }
 
 func serve() {
-	cfgPath := flag.String("config", env("OIDIO_CONFIG", "oidio.yaml"), "path to config file")
+	cfgPath := flag.String("config", env("OIDIO_CONFIG", ""), "path to config file (default: ./oidio.yaml, then ~/.oidio/config.yml, then built-in defaults)")
 	addr := flag.String("addr", env("OIDIO_ADDR", ""), "listen address (overrides config)")
+	offline := flag.Bool("offline", env("OIDIO_OFFLINE", "") != "", "never fetch models; use only what is already in the hub cache")
 	flag.Parse()
 
-	cfg, err := config.Load(*cfgPath)
+	// No config is a supported way to run: the built-in roster names hub
+	// bundles, so a bare `oidio` serves all four surfaces on a machine where
+	// nothing has been downloaded or written down.
+	cfg, src, err := config.LoadDiscovered(*cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+	log.Printf("oidio config: %s", src)
+
+	// Resolve bundle-relative paths to real files BEFORE the engines open
+	// anything — sherpa takes filesystem paths, so the indirection must be gone
+	// by the time a model loads. A cold cache downloads here, which is why this
+	// logs rather than doing it silently.
+	fetch := hf.New()
+	fetch.Offline = *offline
+	fetch.Logf = log.Printf
+	if err := cfg.Resolve(context.Background(), fetch); err != nil {
+		log.Fatalf("models: %v", err)
 	}
 	if *addr != "" {
 		cfg.Addr = *addr

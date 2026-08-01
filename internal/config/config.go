@@ -14,6 +14,14 @@ import (
 type Config struct {
 	Addr   string               `yaml:"addr"`
 	Models map[string]ModelSpec `yaml:"models"`
+
+	// Defaults controls whether the built-in roster (see defaults.go) is merged
+	// under this file. Unset means yes: a config that names one model overrides
+	// that model and keeps the other three, which is what makes a two-line file
+	// a useful thing to write. Set it false to serve EXACTLY what is written
+	// here — the escape hatch for a host that must not quietly start a model it
+	// never asked for.
+	Defaults *bool `yaml:"defaults"`
 }
 
 // ModelSpec is one served model. Type selects the engine; the remaining fields
@@ -22,6 +30,21 @@ type Config struct {
 // and their handlers report "not implemented" rather than "unknown model".
 type ModelSpec struct {
 	Type string `yaml:"type"` // transducer | diarize | tts | realtime
+
+	// Bundle is a Hugging Face repo id (org/name, optionally @revision) holding
+	// this model's files. When set, every path field below that is not already
+	// absolute (or explicitly ./relative) is read from inside that bundle and
+	// fetched into the hub cache on first use.
+	//
+	// It exists so a config can name a model instead of a filesystem. Before
+	// it, running oidio meant downloading ~1.6 GB of ONNX by hand and writing
+	// absolute paths into a file that could then only work on that one machine.
+	//
+	// A path may also carry its OWN bundle as "org/name:file", for inputs that
+	// live in a different repo from the rest of the model — diarization\'s
+	// segmentation and embedding models are published separately from the
+	// recogniser they are used with.
+	Bundle string `yaml:"bundle"`
 
 	// Offline transducer (type: transducer, and the ASR half of type: diarize).
 	Encoder string `yaml:"encoder"`
@@ -112,6 +135,24 @@ type ModelSpec struct {
 
 // Load reads and validates the config file.
 func Load(path string) (*Config, error) {
+	c, err := parse(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Models) == 0 {
+		return nil, fmt.Errorf("%s: no models configured", path)
+	}
+	return c, nil
+}
+
+// parse reads a config WITHOUT requiring models.
+//
+// Separate from Load because a file may legitimately configure nothing but an
+// address once the built-in roster exists — "serve the defaults on :5806" is a
+// reasonable two-line config, and it is the merged result that has to have
+// models, not the file. Load keeps the strict check for callers that read a
+// config as the whole truth (the CLI).
+func parse(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -119,9 +160,6 @@ func Load(path string) (*Config, error) {
 	var c Config
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	if len(c.Models) == 0 {
-		return nil, fmt.Errorf("%s: no models configured", path)
 	}
 	return &c, nil
 }
